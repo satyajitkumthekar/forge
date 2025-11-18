@@ -210,6 +210,8 @@ export default function TrackScreen() {
         });
         setError('Offline: Entry saved and will sync when online.');
         setTimeout(() => setError(''), 3000);
+        // End mutation here for offline case
+        isMutatingRef.current = false;
         return;
       }
 
@@ -222,6 +224,9 @@ export default function TrackScreen() {
         setEntries(updatedEntries);
         setCached(cacheKey, updatedEntries);
         setDataVersion((prev) => prev + 1);
+
+        // End mutation AFTER reload completes successfully
+        isMutatingRef.current = false;
 
       } catch (err) {
         console.error('Error adding entry:', err);
@@ -238,9 +243,12 @@ export default function TrackScreen() {
           setEntries(entries);
           setCached(cacheKey, entries);
         }
+        // End mutation after error handling
+        isMutatingRef.current = false;
       }
-    } finally {
-      // End mutation - allow background updates again
+    } catch (err) {
+      // Catch any unexpected errors
+      console.error('Unexpected error in handleFoodLogged:', err);
       isMutatingRef.current = false;
     }
   };
@@ -269,6 +277,8 @@ export default function TrackScreen() {
         });
         setError('Offline: Entry deleted and will sync when online.');
         setTimeout(() => setError(''), 3000);
+        // End mutation here for offline case
+        isMutatingRef.current = false;
         return;
       }
 
@@ -281,6 +291,9 @@ export default function TrackScreen() {
         setEntries(updatedEntries);
         setCached(cacheKey, updatedEntries);
         setDataVersion((prev) => prev + 1);
+
+        // End mutation AFTER reload completes successfully
+        isMutatingRef.current = false;
 
       } catch (err) {
         console.error('Error deleting entry:', err);
@@ -297,9 +310,12 @@ export default function TrackScreen() {
           setEntries(originalEntries);
           setCached(cacheKey, originalEntries);
         }
+        // End mutation after error handling
+        isMutatingRef.current = false;
       }
-    } finally {
-      // End mutation - allow background updates again
+    } catch (err) {
+      // Catch any unexpected errors
+      console.error('Unexpected error in handleDeleteEntry:', err);
       isMutatingRef.current = false;
     }
   };

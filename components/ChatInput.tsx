@@ -79,12 +79,13 @@ export default function ChatInput({ onFoodLogged }: ChatInputProps) {
       const nutritionData = await api.analyzeFood(description, image || undefined);
 
       // Success - pass data to parent
+      // Note: We don't store image_data anymore (only needed for GPT analysis)
       onFoodLogged({
         name: nutritionData.name,
         calories: nutritionData.calories,
         protein: nutritionData.protein,
         description: description || nutritionData.name,
-        image_data: image || undefined,
+        // image_data removed - not stored in database (only sent to GPT for analysis)
       });
 
       // Reset form
