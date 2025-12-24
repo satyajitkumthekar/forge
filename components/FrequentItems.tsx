@@ -25,7 +25,7 @@ export default function FrequentItems({ items, onItemClick }: FrequentItemsProps
             <button
               key={index}
               onClick={() => onItemClick(item)}
-              className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-white hover:bg-gray-50 border border-gray-200 rounded-lg transition-all group shadow-sm"
+              className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-white/70 backdrop-blur-sm hover:bg-white/80 border border-gray-200 rounded-lg transition-all group shadow-sm"
               title={`${item.name} - Added ${item.count}x recently`}
             >
               <div className="flex flex-col items-start min-w-0">

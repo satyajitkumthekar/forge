@@ -349,12 +349,69 @@ export default function TrackScreen() {
     setCurrentDate(getTodayDate());
   };
 
+  // Calculate calorie color for gradient
+  const getCalorieColor = () => {
+    const totals = entries.reduce(
+      (acc, entry) => ({ calories: acc.calories + (entry.calories || 0) }),
+      { calories: 0 }
+    );
+
+    if (totals.calories === 0 || settings.target_calories === 0) return '#9CA3AF'; // gray-400
+
+    const isDeficit = settings.target_calories < settings.maintenance_calories;
+    const isSurplus = settings.target_calories > settings.maintenance_calories;
+
+    const diff = totals.calories - settings.target_calories;
+    const percentDiff = (diff / settings.target_calories) * 100;
+
+    const isAligned = (isDeficit && diff < 0) || (isSurplus && diff > 0);
+
+    if (isAligned) {
+      const absDiff = Math.abs(percentDiff);
+      if (absDiff <= 10) return '#10A37F';  // green
+      if (absDiff <= 20) return '#F59E0B';  // yellow
+      if (absDiff <= 30) return '#F97316';  // orange
+      return '#EF4444';                     // red
+    } else {
+      const absDiff = Math.abs(percentDiff);
+      if (absDiff <= 5) return '#10A37F';
+      return '#EF4444';
+    }
+  };
+
+  const calorieColor = getCalorieColor();
+
+  // Premium gradient: Rich color at top that quickly fades to white
+  const getPastelGradient = (color: string) => {
+    // Green progress - Rich emerald at top, quick fade to white
+    if (color === '#10A37F') {
+      return 'linear-gradient(to bottom, #10A37F 0%, #6ee7b7 10%, #d1fae5 20%, #ecfdf5 35%, #ffffff 100%)';
+    }
+    // Yellow progress - Rich amber at top, quick fade to white
+    if (color === '#F59E0B') {
+      return 'linear-gradient(to bottom, #F59E0B 0%, #fcd34d 10%, #fef3c7 20%, #fef9c3 35%, #ffffff 100%)';
+    }
+    // Orange progress - Rich orange at top, quick fade to white
+    if (color === '#F97316') {
+      return 'linear-gradient(to bottom, #F97316 0%, #fdba74 10%, #ffedd5 20%, #fff7ed 35%, #ffffff 100%)';
+    }
+    // Red progress - Rich red at top, quick fade to white
+    if (color === '#EF4444') {
+      return 'linear-gradient(to bottom, #EF4444 0%, #f87171 10%, #fecaca 20%, #fee2e2 35%, #ffffff 100%)';
+    }
+    // Gray (no entries) - Gray at top, quick fade to white
+    return 'linear-gradient(to bottom, #9CA3AF 0%, #d1d5db 10%, #f3f4f6 20%, #f9fafb 35%, #ffffff 100%)';
+  };
+
+  const backgroundGradient = getPastelGradient(calorieColor);
+
   return (
     <div
-      className="flex flex-col bg-gray-50"
+      className="flex flex-col relative"
       style={{
-        minHeight: '100dvh', // Use dynamic viewport height for mobile browsers
-        WebkitOverflowScrolling: 'touch' // Smooth scrolling on iOS
+        minHeight: '100dvh',
+        WebkitOverflowScrolling: 'touch',
+        background: backgroundGradient
       }}
     >
       {/* Error Message */}
@@ -375,7 +432,7 @@ export default function TrackScreen() {
       )}
 
       {/* Header with Settings */}
-      <div className="bg-white border-b border-gray-200 px-4 md:px-6 lg:px-8 py-3">
+      <div className="bg-white/70 backdrop-blur-sm border-b border-gray-200 px-4 md:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-base md:text-lg font-bold text-gray-900">Food Tracker</h1>
@@ -430,7 +487,7 @@ export default function TrackScreen() {
       </div>
 
       {/* Totals Section */}
-      <div className="bg-white border-b border-gray-200 px-4 md:px-6 lg:px-8 py-3">
+      <div className="bg-white/70 backdrop-blur-sm border-b border-gray-200 px-4 md:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto">
           <Totals
             entries={entries}
@@ -440,17 +497,6 @@ export default function TrackScreen() {
           />
         </div>
       </div>
-
-      {/* Coach Reminder */}
-      {coachReminder && (
-        <div className="px-4 md:px-6 lg:px-8 pt-3">
-          <div className="max-w-7xl mx-auto">
-            <div className="bg-purple-50 border border-purple-200 rounded-lg px-4 py-2.5">
-              <p className="text-sm text-purple-800">{coachReminder}</p>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Loading Spinner */}
       {loading && (
@@ -467,7 +513,7 @@ export default function TrackScreen() {
 
       {/* Scrollable Content */}
       <div
-        className="flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 pt-3"
+        className="flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 pt-3 bg-transparent"
         style={{
           paddingBottom: 'calc(200px + env(safe-area-inset-bottom, 0px))',
           WebkitOverflowScrolling: 'touch'
@@ -481,7 +527,7 @@ export default function TrackScreen() {
               className={`flex-1 py-3 rounded-lg border font-medium text-sm transition-all ${
                 viewMode === 'table'
                   ? 'bg-black text-white border-black'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  : 'bg-white/70 backdrop-blur-sm text-gray-600 border-gray-200 hover:bg-gray-50/70'
               }`}
             >
               Table
@@ -491,7 +537,7 @@ export default function TrackScreen() {
               className={`flex-1 py-3 rounded-lg border font-medium text-sm transition-all ${
                 viewMode === 'log'
                   ? 'bg-black text-white border-black'
-                  : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                  : 'bg-white/70 backdrop-blur-sm text-gray-600 border-gray-200 hover:bg-gray-50/70'
               }`}
             >
               Log

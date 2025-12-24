@@ -112,7 +112,7 @@ export default function ChatInput({ onFoodLogged }: ChatInputProps) {
 
   return (
     <div
-      className="fixed left-0 right-0 bg-white border-t border-gray-200 z-50"
+      className="fixed left-0 right-0 bg-white/70 backdrop-blur-sm border-t border-gray-200 z-50"
       style={{
         bottom: 'calc(65px + env(safe-area-inset-bottom, 0px))',
         paddingBottom: 'env(safe-area-inset-bottom, 0px)'
@@ -172,7 +172,7 @@ export default function ChatInput({ onFoodLogged }: ChatInputProps) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="Add 1 or multiple items (e.g., 2 rotis, dal, rice)"
-            className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white text-sm text-gray-900 placeholder-gray-500 transition-all"
+            className="flex-1 px-3 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-gray-400 bg-white/70 backdrop-blur-sm text-sm text-gray-900 placeholder-gray-500 transition-all"
             disabled={loading}
           />
 

@@ -563,47 +563,54 @@ export default function AnalyticsScreen() {
   };
 
   // Helper function to get color coding for daily calories
-  // Asymmetric thresholds: strict on "bad" side, relaxed on "good" side
+  // Aligned side: gradual (0-10% green, 10-20% yellow, 20-30% orange, >30% red)
+  // Non-aligned side: strict (>5% red)
   const getCaloriesColor = (calories: number, target: number, maintenance: number) => {
     if (calories === 0) return 'bg-gray-100 text-gray-500';
 
+    const isDeficit = target < maintenance;  // Cutting
+    const isSurplus = target > maintenance;  // Bulking
+
     const diff = calories - target;
-    const percentDiff = Math.abs(diff / target) * 100;
+    const percentDiff = (diff / target) * 100;  // Positive = above, negative = below
 
-    const isDeficit = target < maintenance;
-    const isSurplus = target > maintenance;
-    const isAboveTarget = calories > target;
-    const isBelowTarget = calories < target;
+    // Determine if we're on the "aligned" side (good direction)
+    const isAligned = (isDeficit && diff < 0) || (isSurplus && diff > 0);
 
-    // Determine thresholds based on direction
-    let greenThreshold, yellowThreshold;
-
-    if ((isDeficit && isBelowTarget) || (isSurplus && isAboveTarget)) {
-      // Going in the "good" direction - more relaxed
-      greenThreshold = 5.0;
-      yellowThreshold = 7.5;
+    if (isAligned) {
+      // ALIGNED SIDE (good direction) - Gradual thresholds
+      const absDiff = Math.abs(percentDiff);
+      if (absDiff <= 10) return 'bg-green-100 text-green-700';      // 0-10%
+      if (absDiff <= 20) return 'bg-yellow-100 text-yellow-700';    // 10-20%
+      if (absDiff <= 30) return 'bg-orange-100 text-orange-700';    // 20-30%
+      return 'bg-red-100 text-red-700';                             // >30%
     } else {
-      // Going in the "bad" direction - strict
-      greenThreshold = 2.5;
-      yellowThreshold = 5.0;
+      // NON-ALIGNED SIDE (bad direction) - Strict threshold
+      const absDiff = Math.abs(percentDiff);
+      if (absDiff <= 5) return 'bg-green-100 text-green-700';       // 0-5% tolerance
+      return 'bg-red-100 text-red-700';                             // >5%
     }
-
-    if (percentDiff <= greenThreshold) return 'bg-green-100 text-green-700';
-    if (percentDiff <= yellowThreshold) return 'bg-yellow-100 text-yellow-700';
-    return 'bg-red-100 text-red-700';
   };
 
   // Helper function to get color coding for daily protein
-  // Green if at or above target, yellow if within 5% below, red if more than 5% below
+  // 0-10% green, 10-20% yellow, 20-30% orange, >30% red
   const getProteinColor = (protein: number, target: number) => {
     if (protein === 0) return 'bg-gray-100 text-gray-500';
 
-    if (protein >= target) return 'bg-green-100 text-green-700';
-
+    // Calculate percentage below target
     const percentBelow = ((target - protein) / target) * 100;
 
-    if (percentBelow <= 5.0) return 'bg-yellow-100 text-yellow-700';
-    return 'bg-red-100 text-red-700';
+    // Green: at or above target, or 0-10% below
+    if (percentBelow <= 10) return 'bg-green-100 text-green-700';    // 0-10% below
+
+    // Yellow: 10-20% below target
+    if (percentBelow <= 20) return 'bg-yellow-100 text-yellow-700';  // 10-20% below
+
+    // Orange: 20-30% below target
+    if (percentBelow <= 30) return 'bg-orange-100 text-orange-700';  // 20-30% below
+
+    // Red: more than 30% below target
+    return 'bg-red-100 text-red-700';                                // >30% below
   };
 
   // Calculate deficit/surplus status and color
@@ -1035,7 +1042,6 @@ export default function AnalyticsScreen() {
                             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Maintenance Cal</th>
                             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Target Cal</th>
                             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Target Pro</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Coach Reminder</th>
                             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Food Logs</th>
                             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Coach Calls</th>
                             <th className="px-6 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">Last Active</th>
@@ -1126,21 +1132,6 @@ export default function AnalyticsScreen() {
                                   }}
                                   disabled={updatingMacros === user.user_id}
                                   className="w-24 px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400"
-                                />
-                              </td>
-                              <td className="px-6 py-4">
-                                <textarea
-                                  defaultValue={user.coach_reminder || ''}
-                                  onBlur={(e) => {
-                                    const newValue = e.target.value.trim();
-                                    if (newValue !== (user.coach_reminder || '')) {
-                                      handleReminderUpdate(user.user_id, newValue);
-                                    }
-                                  }}
-                                  disabled={updatingReminder === user.user_id}
-                                  placeholder="No reminder set"
-                                  className="w-64 px-2 py-1 border border-gray-300 rounded text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-400 resize-none"
-                                  rows={2}
                                 />
                               </td>
                               <td className="px-6 py-4 text-sm text-gray-700">{user.food_logs_count}</td>
@@ -1624,7 +1615,9 @@ export default function AnalyticsScreen() {
                                                   entries.map((entry) => (
                                                     <div key={entry.id} className="text-xs">
                                                       <div className="font-medium text-gray-700">{entry.name}</div>
-                                                      <div className="text-gray-500">{entry.calories}c • {entry.protein.toFixed(0)}p</div>
+                                                      <div className="text-gray-500">
+                                                        {entry.calories}c • {entry.protein.toFixed(0)}p
+                                                      </div>
                                                     </div>
                                                   ))
                                                 ) : (

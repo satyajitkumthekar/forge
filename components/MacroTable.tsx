@@ -26,7 +26,7 @@ export default function MacroTable({ entries, onDeleteEntry, onDuplicateEntry }:
   return (
     <div>
       {entries.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-200 p-8 text-center shadow-sm">
+        <div className="bg-white/70 backdrop-blur-sm rounded-xl border border-gray-200 p-8 text-center shadow-sm">
           <div className="w-12 h-12 mx-auto mb-3 bg-gray-100 rounded-full flex items-center justify-center">
             <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
@@ -36,13 +36,13 @@ export default function MacroTable({ entries, onDeleteEntry, onDuplicateEntry }:
           <p className="text-xs text-gray-500 mt-1">Start logging your meals below</p>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+        <div className="bg-white/70 backdrop-blur-sm rounded-xl border border-gray-200 shadow-sm overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-gray-200 bg-gray-50">
                 <th className="text-left py-2.5 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Food</th>
-                <th className="text-right py-2.5 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Cal</th>
-                <th className="text-right py-2.5 px-3 text-xs font-semibold text-gray-600 uppercase tracking-wider">Pro</th>
+                <th className="text-center py-2.5 px-2 text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Cal</th>
+                <th className="text-center py-2.5 px-2 text-xs font-semibold text-gray-600 uppercase tracking-wider whitespace-nowrap">Pro</th>
                 <th className="w-20"></th>
               </tr>
             </thead>
@@ -52,8 +52,12 @@ export default function MacroTable({ entries, onDeleteEntry, onDuplicateEntry }:
                   <td className="py-3 px-3">
                     <div className="font-medium text-gray-900 text-sm">{entry.name}</div>
                   </td>
-                  <td className="py-3 px-3 text-right text-sm text-gray-900">{entry.calories}</td>
-                  <td className="py-3 px-3 text-right text-sm text-gray-900">{entry.protein}g</td>
+                  <td className="py-3 px-2 text-center">
+                    <div className="text-xs font-semibold text-gray-900">{entry.calories}</div>
+                  </td>
+                  <td className="py-3 px-2 text-center">
+                    <div className="text-xs font-semibold text-gray-900">{entry.protein}g</div>
+                  </td>
                   <td className="py-3 px-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <button
