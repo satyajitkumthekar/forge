@@ -9,6 +9,7 @@ import { db } from '@/lib/database';
 import { getCached, setCached, invalidate, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { queueOperation, processQueue, checkOnlineStatus } from '@/utils/offline-queue';
 import { getFrequentItems } from '@/utils/frequent-items';
+import { getAppDate, formatDateToString } from '@/utils/date-helpers';
 import ChatInput from '@/components/ChatInput';
 import MacroTable from '@/components/MacroTable';
 import FoodLogView from '@/components/FoodLogView';
@@ -16,25 +17,20 @@ import Totals from '@/components/Totals';
 import FrequentItems from '@/components/FrequentItems';
 import type { FoodEntry, UserSettings, FrequentItem } from '@/types';
 
-// Date utility functions
-const getTodayDate = (): string => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-};
-
-const formatDate = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
+// Date utility functions (using 3 AM cutoff and local timezone)
+const getTodayDate = getAppDate;
+const formatDate = formatDateToString;
 
 const formatDisplayDate = (dateStr: string): string => {
   const date = new Date(dateStr + 'T00:00:00');
-  const today = new Date(getTodayDate() + 'T00:00:00');
-  const yesterday = new Date(today);
+  const today = getTodayDate();
+  const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = formatDate(yesterday);
 
-  if (dateStr === getTodayDate()) {
+  if (dateStr === today) {
     return 'Today';
-  } else if (dateStr === formatDate(yesterday)) {
+  } else if (dateStr === yesterdayStr) {
     return 'Yesterday';
   } else {
     return date.toLocaleDateString('en-US', {

@@ -5,6 +5,7 @@
  */
 
 import { supabase } from './supabase';
+import { getAppDate, formatDateToString } from '../utils/date-helpers';
 import type {
   FoodEntry,
   UserSettings,
@@ -310,7 +311,7 @@ export const db = {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = getAppDate();
 
       const { count, error } = await supabase
         .from('user_feedback')
@@ -471,8 +472,8 @@ export const db = {
      * @param weekStartDate - Monday date in YYYY-MM-DD format (optional, defaults to current week)
      */
     getCoachAnalytics: async (weekStartDate?: string): Promise<CoachAnalyticsRow[]> => {
-      // Pass today's date in local timezone to match dashboard calculations
-      const today = new Date().toISOString().split('T')[0];
+      // Pass today's date in local timezone (with 3 AM cutoff) to match dashboard calculations
+      const today = getAppDate();
 
       const { data, error } = await supabase
         .rpc('get_coach_analytics', {
@@ -525,11 +526,6 @@ export const db = {
   },
 };
 
-// Helper function to format date consistently
-export const formatDate = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
-
-export const getTodayDate = (): string => {
-  return formatDate(new Date());
-};
+// Helper functions for date formatting (using 3 AM cutoff and local timezone)
+export const formatDate = formatDateToString;
+export const getTodayDate = getAppDate;

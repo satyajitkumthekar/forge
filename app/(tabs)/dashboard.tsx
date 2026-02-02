@@ -6,14 +6,13 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/database';
 import { getWeeklyStats, getWeekStart, formatWeekRange } from '@/utils/weekly-stats';
+import { getAppDate } from '@/utils/date-helpers';
 import { format } from 'date-fns';
 import WeeklyChart from '@/components/WeeklyChart';
 import type { WeeklyStats, UserSettings } from '@/types';
 
-const getTodayDate = (): string => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-};
+// Use 3 AM cutoff and local timezone
+const getTodayDate = getAppDate;
 
 export default function DashboardScreen() {
   const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date(getTodayDate())));

@@ -4,6 +4,7 @@
  */
 
 import { startOfWeek, format, addDays } from 'date-fns';
+import { getAppDate, formatDateToString } from './date-helpers';
 import type { FoodEntry, WeeklyStats, DayData } from '../types';
 
 export const getWeekStart = (date: Date | string): Date => {
@@ -31,7 +32,7 @@ export const getWeeklyStats = async (
   const weekEnd = addDays(weekStart, 6);
   const startDate = format(weekStart, 'yyyy-MM-dd');
   const endDate = format(weekEnd, 'yyyy-MM-dd');
-  const today = format(new Date(), 'yyyy-MM-dd');
+  const today = getAppDate(); // Use 3 AM cutoff and local timezone
 
   const allData = await getDataForRange(startDate, endDate);
 
