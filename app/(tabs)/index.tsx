@@ -27,21 +27,13 @@ const formatDate = (date: Date): string => {
 };
 
 const formatDisplayDate = (dateStr: string): string => {
-  const date = new Date(dateStr + 'T00:00:00');
-  const today = new Date(getTodayDate() + 'T00:00:00');
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
+  const todayStr = getTodayDate();
 
-  if (dateStr === getTodayDate()) {
+  if (dateStr === todayStr) {
     return 'Today';
-  } else if (dateStr === formatDate(yesterday)) {
-    return 'Yesterday';
-  } else if (dateStr === formatDate(tomorrow)) {
-    return 'Tomorrow';
   } else {
-    return date.toLocaleDateString('en-US', {
+    // Show: "Sun, Feb 2, 2026" for all non-today dates
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
