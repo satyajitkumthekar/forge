@@ -11,12 +11,16 @@ import { db } from '@/lib/database';
 import { api } from '@/lib/api';
 import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { getWeekStart, formatWeekRange, getWeeklyStats } from '@/utils/weekly-stats';
-import { getAppDate } from '@/utils/date-helpers';
 import { format, addDays } from 'date-fns';
 import type { AnalyticsSummary, DailyMetrics, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis } from '@/types';
 
 // Cache TTL: 5 minutes (analytics don't need to be real-time)
 const ANALYTICS_CACHE_TTL = 5 * 60 * 1000;
+
+const getTodayDate = (): string => {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+};
 
 export default function AnalyticsScreen() {
   const { width: windowWidth } = useWindowDimensions();
@@ -43,9 +47,6 @@ export default function AnalyticsScreen() {
   const [maxAllowedUsers, setMaxAllowedUsers] = useState(100);
   const [totalActiveUsers, setTotalActiveUsers] = useState(0);
   const [savedAdminControls, setSavedAdminControls] = useState(false);
-
-  // Week selector for coach analytics (using 3 AM cutoff and local timezone)
-  const getTodayDate = getAppDate;
   const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date(getTodayDate())));
 
   // Expandable rows state

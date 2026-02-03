@@ -4,8 +4,12 @@
  */
 
 import { startOfWeek, format, addDays } from 'date-fns';
-import { getAppDate, formatDateToString } from './date-helpers';
 import type { FoodEntry, WeeklyStats, DayData } from '../types';
+
+const getAppDate = (): string => {
+  const today = new Date();
+  return today.toISOString().split('T')[0];
+};
 
 export const getWeekStart = (date: Date | string): Date => {
   const d = typeof date === 'string' ? new Date(date) : date;
