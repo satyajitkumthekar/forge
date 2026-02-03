@@ -22,6 +22,21 @@ const getTodayDate = (): string => {
   return today.toISOString().split('T')[0];
 };
 
+const getSmartInitialDate = (): string => {
+  const now = new Date();
+
+  // If before 3 AM local time, show yesterday's UTC date for better UX
+  // (people logging late night food want it to count for "today" not "tomorrow")
+  if (now.getHours() < 3) {
+    const yesterday = new Date(now);
+    yesterday.setDate(yesterday.getDate() - 1);
+    return yesterday.toISOString().split('T')[0];
+  }
+
+  // Otherwise show today's UTC date
+  return now.toISOString().split('T')[0];
+};
+
 const formatDate = (date: Date): string => {
   return date.toISOString().split('T')[0];
 };
@@ -45,7 +60,7 @@ const formatDisplayDate = (dateStr: string): string => {
 // Note: CACHE_KEYS now imported from enhanced-cache for consistency
 
 export default function TrackScreen() {
-  const [currentDate, setCurrentDate] = useState(getTodayDate());
+  const [currentDate, setCurrentDate] = useState(getSmartInitialDate());
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [settings, setSettings] = useState<UserSettings>({
     id: '',
