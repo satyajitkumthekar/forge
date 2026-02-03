@@ -474,9 +474,18 @@ export default function TrackScreen() {
             </button>
 
             <div className="flex items-center gap-2">
-              <span className="text-sm md:text-base font-bold text-gray-900">
-                {formatDisplayDate(currentDate)}
-              </span>
+              <div className="text-center">
+                <div className="text-sm md:text-base font-bold text-gray-900">
+                  {formatDisplayDate(currentDate)}
+                </div>
+                <div className="text-xs text-gray-500 mt-0.5">
+                  {new Date(currentDate + 'T00:00:00').toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}
+                </div>
+              </div>
               {currentDate !== getTodayDate() && (
                 <button
                   onClick={goToToday}
