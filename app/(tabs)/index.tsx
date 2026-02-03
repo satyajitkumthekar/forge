@@ -27,11 +27,16 @@ const formatDisplayDate = (dateStr: string): string => {
   const yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
   const yesterdayStr = formatDate(yesterday);
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const tomorrowStr = formatDate(tomorrow);
 
   if (dateStr === today) {
     return 'Today';
   } else if (dateStr === yesterdayStr) {
     return 'Yesterday';
+  } else if (dateStr === tomorrowStr) {
+    return 'Tomorrow';
   } else {
     return date.toLocaleDateString('en-US', {
       weekday: 'short',
@@ -61,6 +66,8 @@ export default function TrackScreen() {
   const [frequentItems, setFrequentItems] = useState<FrequentItem[]>([]);
   const [dataVersion, setDataVersion] = useState(0);
   const [viewMode, setViewMode] = useState<'table' | 'log'>('table');
+  // Coach reminder loaded for future use
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [coachReminder, setCoachReminder] = useState<string | null>(null);
 
   // Track if we're currently mutating to prevent race conditions
@@ -88,7 +95,17 @@ export default function TrackScreen() {
 
         // Use database abstraction
         const allData = await db.food.getRange(startDate, endDate);
-        const frequent = getFrequentItems(allData);
+
+        // Group entries by date for frequent items algorithm
+        const groupedData: Record<string, FoodEntry[]> = {};
+        for (const entry of allData) {
+          if (!groupedData[entry.entry_date]) {
+            groupedData[entry.entry_date] = [];
+          }
+          groupedData[entry.entry_date].push(entry);
+        }
+
+        const frequent = getFrequentItems(groupedData);
         setFrequentItems(frequent);
       } catch (err) {
         console.error('Error loading frequent items:', err);
@@ -179,7 +196,7 @@ export default function TrackScreen() {
 
     try {
       // Optimistic update with temp ID
-      const tempId = `temp_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const tempId = `temp_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
       const newEntry: FoodEntry = {
         ...foodData,
         id: tempId,
@@ -333,10 +350,12 @@ export default function TrackScreen() {
     const newDate = new Date(currentDate);
     newDate.setDate(newDate.getDate() + days);
     const newDateStr = formatDate(newDate);
-    const today = getTodayDate();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const tomorrowStr = formatDate(tomorrow);
 
-    // Don't allow future dates
-    if (newDateStr <= today) {
+    // Allow dates up to tomorrow
+    if (newDateStr <= tomorrowStr) {
       setCurrentDate(newDateStr);
     }
   };
@@ -467,9 +486,17 @@ export default function TrackScreen() {
 
             <button
               onClick={() => navigateDate(1)}
-              disabled={currentDate === getTodayDate()}
+              disabled={(() => {
+                const tomorrow = new Date();
+                tomorrow.setDate(tomorrow.getDate() + 1);
+                return currentDate === formatDate(tomorrow);
+              })()}
               className={`p-2 rounded-lg transition-all ${
-                currentDate === getTodayDate()
+                (() => {
+                  const tomorrow = new Date();
+                  tomorrow.setDate(tomorrow.getDate() + 1);
+                  return currentDate === formatDate(tomorrow);
+                })()
                   ? 'opacity-30 cursor-not-allowed'
                   : 'hover:bg-gray-100'
               }`}
