@@ -25,16 +25,23 @@ const getTodayDate = (): string => {
 const getSmartInitialDate = (): string => {
   const now = new Date();
 
-  // If before 3 AM local time, show yesterday's UTC date for better UX
+  // Get local date components
+  let year = now.getFullYear();
+  let month = now.getMonth();
+  let day = now.getDate();
+
+  // If before 3 AM local time, use yesterday's date
   // (people logging late night food want it to count for "today" not "tomorrow")
   if (now.getHours() < 3) {
-    const yesterday = new Date(now);
-    yesterday.setDate(yesterday.getDate() - 1);
-    return yesterday.toISOString().split('T')[0];
+    const yesterday = new Date(year, month, day - 1);
+    year = yesterday.getFullYear();
+    month = yesterday.getMonth();
+    day = yesterday.getDate();
   }
 
-  // Otherwise show today's UTC date
-  return now.toISOString().split('T')[0];
+  // Create UTC date string from local date components
+  const targetDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
+  return targetDate.toISOString().split('T')[0];
 };
 
 const formatDate = (date: Date): string => {
