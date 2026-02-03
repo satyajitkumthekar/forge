@@ -36,7 +36,7 @@ export const getWeeklyStats = async (
   const weekEnd = addDays(weekStart, 6);
   const startDate = format(weekStart, 'yyyy-MM-dd');
   const endDate = format(weekEnd, 'yyyy-MM-dd');
-  const today = getAppDate(); // Use 3 AM cutoff and local timezone
+  const today = getAppDate(); // UTC date
 
   const allData = await getDataForRange(startDate, endDate);
 

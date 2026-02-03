@@ -59,7 +59,7 @@ Return ONLY valid JSON with this structure:
   "protein": number (total in grams)
 }`;
 
-// Helper: Get start of current week (Monday) using local timezone (not UTC)
+// Helper: Get start of current week (Monday) using UTC
 function getWeekStart(date: Date = new Date()): string {
   const d = new Date(date);
   const day = d.getDay();
@@ -67,11 +67,8 @@ function getWeekStart(date: Date = new Date()): string {
   d.setDate(diff);
   d.setHours(0, 0, 0, 0);
 
-  // Format using local timezone (not UTC)
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const dayOfMonth = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${dayOfMonth}`;
+  // Format using UTC to match frontend
+  return d.toISOString().split('T')[0];
 }
 
 serve(async (req) => {
