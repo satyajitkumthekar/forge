@@ -93,8 +93,8 @@ export default function CoachScreen() {
         const status = await db.rateLimit.getStatus();
         setError(
           `Rate limit reached (${status.coach_calls_used}/${status.coach_calls_limit}). Resets at ${new Date(
-            status.resets_at
-          ).toLocaleTimeString()}`
+            status.resets_at,
+          ).toLocaleTimeString()}`,
         );
         setLoading(false);
         return;
@@ -131,7 +131,6 @@ export default function CoachScreen() {
 
       // Add assistant response to chat
       setMessages((prev) => [...prev, { role: 'assistant', content: response.response }]);
-
     } catch (err) {
       console.error('Coach error:', err);
       setError(err instanceof Error ? err.message : 'Failed to get response. Please try again.');
@@ -149,7 +148,9 @@ export default function CoachScreen() {
           <div className="flex items-center justify-between mb-4">
             <div className="flex-1">
               <h1 className="text-lg font-bold text-gray-900">Nutrition Coach</h1>
-              <p className="text-xs text-gray-500 mt-1">Ask questions about your nutrition and diet</p>
+              <p className="text-xs text-gray-500 mt-1">
+                Ask questions about your nutrition and diet
+              </p>
             </div>
             {messages.length > 0 && (
               <button
@@ -176,7 +177,9 @@ export default function CoachScreen() {
                   <span className="text-3xl">💬</span>
                 </div>
                 <h3 className="text-sm font-semibold text-gray-900 mb-2">Start a conversation</h3>
-                <p className="text-xs text-gray-500">Ask about nutrition, meal planning, or your progress</p>
+                <p className="text-xs text-gray-500">
+                  Ask about nutrition, meal planning, or your progress
+                </p>
               </div>
             )}
 
@@ -193,14 +196,28 @@ export default function CoachScreen() {
                     <ReactMarkdown
                       className="prose prose-sm max-w-none text-gray-700"
                       components={{
-                        h1: ({ node, ...props }) => <h1 className="text-xl font-bold text-gray-900 mb-2" {...props} />,
-                        h2: ({ node, ...props }) => <h2 className="text-lg font-bold text-gray-900 mb-2" {...props} />,
-                        h3: ({ node, ...props }) => <h3 className="text-base font-bold text-gray-900 mb-2" {...props} />,
-                        strong: ({ node, ...props }) => <strong className="text-gray-900 font-bold" {...props} />,
-                        a: ({ node, ...props }) => <a className="text-black underline" {...props} />,
+                        h1: ({ node, ...props }) => (
+                          <h1 className="text-xl font-bold text-gray-900 mb-2" {...props} />
+                        ),
+                        h2: ({ node, ...props }) => (
+                          <h2 className="text-lg font-bold text-gray-900 mb-2" {...props} />
+                        ),
+                        h3: ({ node, ...props }) => (
+                          <h3 className="text-base font-bold text-gray-900 mb-2" {...props} />
+                        ),
+                        strong: ({ node, ...props }) => (
+                          <strong className="text-gray-900 font-bold" {...props} />
+                        ),
+                        a: ({ node, ...props }) => (
+                          <a className="text-black underline" {...props} />
+                        ),
                         p: ({ node, ...props }) => <p className="mb-2 last:mb-0" {...props} />,
-                        ul: ({ node, ...props }) => <ul className="list-disc pl-5 mb-2" {...props} />,
-                        ol: ({ node, ...props }) => <ol className="list-decimal pl-5 mb-2" {...props} />,
+                        ul: ({ node, ...props }) => (
+                          <ul className="list-disc pl-5 mb-2" {...props} />
+                        ),
+                        ol: ({ node, ...props }) => (
+                          <ol className="list-decimal pl-5 mb-2" {...props} />
+                        ),
                       }}
                     >
                       {message.content}
@@ -214,9 +231,18 @@ export default function CoachScreen() {
               <div className="flex justify-start">
                 <div className="bg-white border border-gray-200 rounded-md px-4 py-3 flex items-center gap-2">
                   <div className="flex gap-1">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    <div
+                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      style={{ animationDelay: '0ms' }}
+                    ></div>
+                    <div
+                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      style={{ animationDelay: '150ms' }}
+                    ></div>
+                    <div
+                      className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"
+                      style={{ animationDelay: '300ms' }}
+                    ></div>
                   </div>
                   <span className="text-xs text-gray-500">Thinking...</span>
                 </div>
@@ -227,7 +253,10 @@ export default function CoachScreen() {
       </div>
 
       {/* Fixed Input Form */}
-      <div className="fixed left-0 right-0 bg-white border-t border-gray-200 z-50" style={{ bottom: '65px' }}>
+      <div
+        className="fixed left-0 right-0 bg-white border-t border-gray-200 z-50"
+        style={{ bottom: '65px' }}
+      >
         <div className="max-w-4xl mx-auto px-3 py-3">
           <form onSubmit={handleSend} className="flex gap-2">
             <textarea
@@ -251,8 +280,20 @@ export default function CoachScreen() {
             >
               {loading ? (
                 <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
                 </svg>
               ) : (
                 'Send'

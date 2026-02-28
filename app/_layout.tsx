@@ -148,7 +148,10 @@ function RootLayoutNav() {
   return (
     <ThemeProvider value={DefaultTheme}>
       <Head>
-        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no"
+        />
       </Head>
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(auth)" />

@@ -15,7 +15,12 @@ interface WeeklyChartProps {
   maintenanceCalories: number;
 }
 
-export default function WeeklyChart({ dailyData, targetCalories, targetProtein, maintenanceCalories }: WeeklyChartProps) {
+export default function WeeklyChart({
+  dailyData,
+  targetCalories,
+  targetProtein,
+  maintenanceCalories,
+}: WeeklyChartProps) {
   if (!dailyData || dailyData.length === 0) {
     return null;
   }
@@ -30,7 +35,7 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
   };
 
   // Prepare calories data with asymmetric color coding
-  const caloriesData = dailyData.map(day => {
+  const caloriesData = dailyData.map((day) => {
     if (day.calories === 0) {
       return {
         value: day.calories,
@@ -44,11 +49,11 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
       };
     }
 
-    const isDeficit = targetCalories < maintenanceCalories;  // Cutting
-    const isSurplus = targetCalories > maintenanceCalories;  // Bulking
+    const isDeficit = targetCalories < maintenanceCalories; // Cutting
+    const isSurplus = targetCalories > maintenanceCalories; // Bulking
 
     const diff = day.calories - targetCalories;
-    const percentDiff = (diff / targetCalories) * 100;  // Positive = above, negative = below
+    const percentDiff = (diff / targetCalories) * 100; // Positive = above, negative = below
 
     // Determine if we're on the "aligned" side (good direction)
     const isAligned = (isDeficit && diff < 0) || (isSurplus && diff > 0);
@@ -59,20 +64,20 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
     if (isAligned) {
       // ALIGNED SIDE (good direction) - Gradual thresholds
       if (absDiff <= 10) {
-        barColor = '#4ADE80';  // green - 0-10%
+        barColor = '#4ADE80'; // green - 0-10%
       } else if (absDiff <= 20) {
-        barColor = '#FBBF24';  // yellow - 10-20%
+        barColor = '#FBBF24'; // yellow - 10-20%
       } else if (absDiff <= 30) {
-        barColor = '#FB923C';  // orange - 20-30%
+        barColor = '#FB923C'; // orange - 20-30%
       } else {
-        barColor = '#F87171';  // red - >30%
+        barColor = '#F87171'; // red - >30%
       }
     } else {
       // NON-ALIGNED SIDE (bad direction) - Strict threshold
       if (absDiff <= 5) {
-        barColor = '#4ADE80';  // green - 0-5% tolerance
+        barColor = '#4ADE80'; // green - 0-5% tolerance
       } else {
-        barColor = '#F87171';  // red - >5%
+        barColor = '#F87171'; // red - >5%
       }
     }
 
@@ -89,7 +94,7 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
   });
 
   // Prepare protein data with color coding
-  const proteinData = dailyData.map(day => {
+  const proteinData = dailyData.map((day) => {
     if (day.protein === 0) {
       return {
         value: day.protein,
@@ -109,13 +114,13 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
     let barColor = '#4ADE80'; // green
     // Green: at or above target, or 0-10% below
     if (percentBelow <= 10) {
-      barColor = '#4ADE80';  // green - 0-10% below
+      barColor = '#4ADE80'; // green - 0-10% below
     } else if (percentBelow <= 20) {
-      barColor = '#FBBF24';  // yellow - 10-20% below
+      barColor = '#FBBF24'; // yellow - 10-20% below
     } else if (percentBelow <= 30) {
-      barColor = '#FB923C';  // orange - 20-30% below
+      barColor = '#FB923C'; // orange - 20-30% below
     } else {
-      barColor = '#F87171';  // red - >30% below
+      barColor = '#F87171'; // red - >30% below
     }
 
     return {
@@ -133,7 +138,15 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
   return (
     <View style={{ gap: 16 }}>
       {/* Calories Chart */}
-      <View style={{ backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', padding: 16 }}>
+      <View
+        style={{
+          backgroundColor: 'white',
+          borderRadius: 12,
+          borderWidth: 1,
+          borderColor: '#E5E7EB',
+          padding: 16,
+        }}
+      >
         <View style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#111827', marginBottom: 6 }}>
             Daily Calories
@@ -144,7 +157,8 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
             </Text>
             <Text style={{ fontSize: 12, color: '#6B7280' }}>•</Text>
             <Text style={{ fontSize: 12, color: '#6B7280' }}>
-              Maintenance: <Text style={{ fontWeight: '600', color: '#111827' }}>{maintenanceCalories}</Text>
+              Maintenance:{' '}
+              <Text style={{ fontWeight: '600', color: '#111827' }}>{maintenanceCalories}</Text>
             </Text>
           </View>
         </View>
@@ -173,7 +187,15 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
         </View>
 
         {/* Legend */}
-        <View style={{ marginTop: 16, flexDirection: 'row', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <View
+          style={{
+            marginTop: 16,
+            flexDirection: 'row',
+            justifyContent: 'center',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
           <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
             <View style={{ width: 12, height: 12, backgroundColor: '#4ADE80', borderRadius: 2 }} />
             <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '500' }}>On Track</Text>
@@ -195,7 +217,15 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
 
       {/* Protein Chart */}
       {targetProtein > 0 && (
-        <View style={{ backgroundColor: 'white', borderRadius: 12, borderWidth: 1, borderColor: '#E5E7EB', padding: 16 }}>
+        <View
+          style={{
+            backgroundColor: 'white',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: '#E5E7EB',
+            padding: 16,
+          }}
+        >
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 14, fontWeight: 'bold', color: '#111827', marginBottom: 6 }}>
               Daily Protein
@@ -229,21 +259,37 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
           </View>
 
           {/* Legend */}
-          <View style={{ marginTop: 16, flexDirection: 'row', justifyContent: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <View
+            style={{
+              marginTop: 16,
+              flexDirection: 'row',
+              justifyContent: 'center',
+              gap: 12,
+              flexWrap: 'wrap',
+            }}
+          >
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 12, height: 12, backgroundColor: '#4ADE80', borderRadius: 2 }} />
+              <View
+                style={{ width: 12, height: 12, backgroundColor: '#4ADE80', borderRadius: 2 }}
+              />
               <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '500' }}>On Track</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 12, height: 12, backgroundColor: '#FBBF24', borderRadius: 2 }} />
+              <View
+                style={{ width: 12, height: 12, backgroundColor: '#FBBF24', borderRadius: 2 }}
+              />
               <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '500' }}>Close</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 12, height: 12, backgroundColor: '#FB923C', borderRadius: 2 }} />
+              <View
+                style={{ width: 12, height: 12, backgroundColor: '#FB923C', borderRadius: 2 }}
+              />
               <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '500' }}>Needs Work</Text>
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <View style={{ width: 12, height: 12, backgroundColor: '#F87171', borderRadius: 2 }} />
+              <View
+                style={{ width: 12, height: 12, backgroundColor: '#F87171', borderRadius: 2 }}
+              />
               <Text style={{ fontSize: 11, color: '#6B7280', fontWeight: '500' }}>Off Track</Text>
             </View>
           </View>

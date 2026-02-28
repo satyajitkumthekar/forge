@@ -32,8 +32,8 @@ export const fontSize = {
 } as const;
 
 export const lineHeight = {
-  tight: 1.2,   // For headings
-  normal: 1.5,  // For body text
+  tight: 1.2, // For headings
+  normal: 1.5, // For body text
   relaxed: 1.75, // For long-form content
 } as const;
 
@@ -155,11 +155,11 @@ export const shadows = {
 // RESPONSIVE BREAKPOINTS
 // ============================================
 export const breakpoints = {
-  base: 0,     // Mobile
-  sm: 640,     // Large mobile
-  md: 768,     // Tablet
-  lg: 1024,    // Desktop
-  xl: 1280,    // Large desktop
+  base: 0, // Mobile
+  sm: 640, // Large mobile
+  md: 768, // Tablet
+  lg: 1024, // Desktop
+  xl: 1280, // Large desktop
   '2xl': 1536, // Extra large
 } as const;
 
@@ -167,17 +167,17 @@ export const breakpoints = {
 // LAYOUT CONSTRAINTS
 // ============================================
 export const maxWidth = {
-  form: 600,      // Forms and modals
-  content: 896,   // Main content areas (7xl in Tailwind)
-  wide: 1280,     // Wide layouts
-  full: 1536,     // Full width constrained
+  form: 600, // Forms and modals
+  content: 896, // Main content areas (7xl in Tailwind)
+  wide: 1280, // Wide layouts
+  full: 1536, // Full width constrained
 } as const;
 
 // ============================================
 // TOUCH TARGETS
 // ============================================
 export const touchTarget = {
-  minimum: 44,  // iOS minimum recommended
+  minimum: 44, // iOS minimum recommended
   comfortable: 48,
   large: 56,
 } as const;
@@ -215,7 +215,7 @@ export const zIndex = {
 export const getResponsivePadding = (
   mobile: keyof typeof spacing,
   tablet: keyof typeof spacing,
-  desktop: keyof typeof spacing
+  desktop: keyof typeof spacing,
 ) => ({
   base: spacing[mobile],
   md: spacing[tablet],
@@ -229,7 +229,7 @@ export const getResponsivePadding = (
 export const getResponsiveFontSize = (
   mobile: keyof typeof fontSize,
   tablet: keyof typeof fontSize,
-  desktop: keyof typeof fontSize
+  desktop: keyof typeof fontSize,
 ) => ({
   base: fontSize[mobile],
   md: fontSize[tablet],

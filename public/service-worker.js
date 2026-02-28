@@ -8,23 +8,18 @@ const RUNTIME_CACHE = 'forge-runtime-v3';
 const OFFLINE_URL = '/offline.html';
 
 // Files to cache immediately on install
-const PRECACHE_URLS = [
-  '/',
-  '/manifest.json',
-  '/icon-192.png',
-  '/icon-512.png',
-  OFFLINE_URL
-];
+const PRECACHE_URLS = ['/', '/manifest.json', '/icon-192.png', '/icon-512.png', OFFLINE_URL];
 
 // Install event - cache core assets
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME)
+    caches
+      .open(CACHE_NAME)
       .then((cache) => cache.addAll(PRECACHE_URLS))
       .then(() => self.skipWaiting())
       .catch((error) => {
         console.error('Service Worker install failed:', error);
-      })
+      }),
   );
 });
 
@@ -32,16 +27,19 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   const currentCaches = [CACHE_NAME, RUNTIME_CACHE];
   event.waitUntil(
-    caches.keys()
+    caches
+      .keys()
       .then((cacheNames) => {
         return cacheNames.filter((cacheName) => !currentCaches.includes(cacheName));
       })
       .then((cachesToDelete) => {
-        return Promise.all(cachesToDelete.map((cacheToDelete) => {
-          return caches.delete(cacheToDelete);
-        }));
+        return Promise.all(
+          cachesToDelete.map((cacheToDelete) => {
+            return caches.delete(cacheToDelete);
+          }),
+        );
       })
-      .then(() => self.clients.claim())
+      .then(() => self.clients.claim()),
   );
 });
 
@@ -52,7 +50,7 @@ async function cleanupCache(cacheName, maxEntries) {
 
   if (keys.length > maxEntries) {
     const keysToDelete = keys.slice(0, keys.length - maxEntries);
-    await Promise.all(keysToDelete.map(key => cache.delete(key)));
+    await Promise.all(keysToDelete.map((key) => cache.delete(key)));
   }
 }
 
@@ -93,7 +91,7 @@ self.addEventListener('fetch', (event) => {
         .catch(() => {
           // Fallback to cache if network fails
           return caches.match(request);
-        })
+        }),
     );
     return;
   }
@@ -101,8 +99,12 @@ self.addEventListener('fetch', (event) => {
   // Strategy: Different strategies for different Supabase endpoints
   if (url.hostname.includes('supabase.co')) {
     // For mutations, always go to network (no caching)
-    if (request.method === 'POST' || request.method === 'PUT' ||
-        request.method === 'DELETE' || request.method === 'PATCH') {
+    if (
+      request.method === 'POST' ||
+      request.method === 'PUT' ||
+      request.method === 'DELETE' ||
+      request.method === 'PATCH'
+    ) {
       event.respondWith(fetch(request));
       return;
     }
@@ -130,7 +132,7 @@ self.addEventListener('fetch', (event) => {
             return caches.match(request).then((cachedResponse) => {
               return cachedResponse || caches.match(OFFLINE_URL);
             });
-          })
+          }),
       );
       return;
     }
@@ -158,16 +160,18 @@ self.addEventListener('fetch', (event) => {
           });
 
         return cachedResponse || fetchPromise;
-      })
+      }),
     );
     return;
   }
 
   // Strategy: CacheFirst for static assets (images, fonts, etc.)
-  if (request.destination === 'image' ||
-      request.destination === 'font' ||
-      request.destination === 'style' ||
-      url.pathname.match(/\.(png|jpg|jpeg|svg|gif|woff|woff2|ttf|eot|css)$/)) {
+  if (
+    request.destination === 'image' ||
+    request.destination === 'font' ||
+    request.destination === 'style' ||
+    url.pathname.match(/\.(png|jpg|jpeg|svg|gif|woff|woff2|ttf|eot|css)$/)
+  ) {
     event.respondWith(
       caches.match(request).then((cachedResponse) => {
         if (cachedResponse) {
@@ -197,7 +201,7 @@ self.addEventListener('fetch', (event) => {
             }
             throw error;
           });
-      })
+      }),
     );
     return;
   }
@@ -222,7 +226,7 @@ self.addEventListener('fetch', (event) => {
         return caches.match(request).then((cachedResponse) => {
           return cachedResponse || caches.match(OFFLINE_URL);
         });
-      })
+      }),
   );
 });
 

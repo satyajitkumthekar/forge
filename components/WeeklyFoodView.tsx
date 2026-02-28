@@ -25,7 +25,7 @@ export default function WeeklyFoodView({
   targetProtein,
   maintenanceCalories,
   viewMode,
-  onViewModeChange
+  onViewModeChange,
 }: WeeklyFoodViewProps) {
   const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
   const today = format(new Date(), 'yyyy-MM-dd');
@@ -38,9 +38,7 @@ export default function WeeklyFoodView({
           <button
             onClick={() => onViewModeChange('table')}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              viewMode === 'table'
-                ? 'bg-black text-white'
-                : 'text-gray-600 hover:text-gray-900'
+              viewMode === 'table' ? 'bg-black text-white' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             Table
@@ -48,9 +46,7 @@ export default function WeeklyFoodView({
           <button
             onClick={() => onViewModeChange('log')}
             className={`px-4 py-2 rounded-md text-sm font-medium transition-all ${
-              viewMode === 'log'
-                ? 'bg-black text-white'
-                : 'text-gray-600 hover:text-gray-900'
+              viewMode === 'log' ? 'bg-black text-white' : 'text-gray-600 hover:text-gray-900'
             }`}
           >
             Log

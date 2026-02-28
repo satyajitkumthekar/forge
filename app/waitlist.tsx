@@ -67,7 +67,10 @@ export default function WaitlistScreen() {
       />
 
       {/* Main content */}
-      <VStack sx={{ position: 'relative', zIndex: 10, maxWidth: 600, width: '100%' }} alignItems="center">
+      <VStack
+        sx={{ position: 'relative', zIndex: 10, maxWidth: 600, width: '100%' }}
+        alignItems="center"
+      >
         {/* Rocket emoji */}
         <Text fontSize={64} mb={32}>
           🚀
@@ -79,7 +82,17 @@ export default function WaitlistScreen() {
         </Text>
 
         {/* User rank card */}
-        <Box mb={32} borderRadius={24} overflow="hidden" sx={{ shadowColor: 'black', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}>
+        <Box
+          mb={32}
+          borderRadius={24}
+          overflow="hidden"
+          sx={{
+            shadowColor: 'black',
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+            shadowOffset: { width: 0, height: 4 },
+          }}
+        >
           <Box
             p={4}
             sx={{
@@ -87,7 +100,14 @@ export default function WaitlistScreen() {
             }}
           >
             <Box bg="#000000" borderRadius={16} px={32} py={24} alignItems="center">
-              <Text fontSize={14} fontWeight="600" color="#9CA3AF" mb={8} textTransform="uppercase" sx={{ letterSpacing: 0.5 }}>
+              <Text
+                fontSize={14}
+                fontWeight="600"
+                color="#9CA3AF"
+                mb={8}
+                textTransform="uppercase"
+                sx={{ letterSpacing: 0.5 }}
+              >
                 Your Position
               </Text>
               <Text
@@ -111,7 +131,11 @@ export default function WaitlistScreen() {
             We're letting people in gradually.
           </Text>
           <Text fontSize={18} color="#9CA3AF" textAlign="center">
-            Currently allowing the first <Text fontWeight="600" color="white">{positionInfo?.maxAllowed}</Text> users.
+            Currently allowing the first{' '}
+            <Text fontWeight="600" color="white">
+              {positionInfo?.maxAllowed}
+            </Text>{' '}
+            users.
           </Text>
           <Text fontSize={16} color="#6B7280" textAlign="center">
             You're secured in line and will get instant access when we expand capacity.
@@ -150,8 +174,7 @@ export default function WaitlistScreen() {
         {/* Additional info */}
         <Box mt={48} pt={32} borderTopWidth={1} borderTopColor="rgba(255, 255, 255, 0.1)">
           <Text fontSize={14} color="#6B7280" textAlign="center">
-            Questions? Contact us at{' '}
-            <Text color="#C084FC">support@foodtracker.com</Text>
+            Questions? Contact us at <Text color="#C084FC">support@foodtracker.com</Text>
           </Text>
         </Box>
       </VStack>

@@ -69,7 +69,8 @@ export interface DayData {
   entries: FoodEntry[];
 }
 
-export interface FrequentItem extends Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'> {
+export interface FrequentItem
+  extends Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'> {
   count: number;
 }
 
@@ -148,7 +149,7 @@ export interface MealTableRow {
   avgCal: number;
   avgPro: number;
   frequency: string;
-  change: string | null;  // "ADD 2 eggs → +140cal, +12g pro" or null
+  change: string | null; // "ADD 2 eggs → +140cal, +12g pro" or null
 }
 
 export interface MealCoachingAnalysis {

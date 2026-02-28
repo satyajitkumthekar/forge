@@ -13,18 +13,25 @@ interface TotalsProps {
   maintenanceCalories?: number;
 }
 
-export default function Totals({ entries, targetCalories, targetProtein, maintenanceCalories }: TotalsProps) {
+export default function Totals({
+  entries,
+  targetCalories,
+  targetProtein,
+  maintenanceCalories,
+}: TotalsProps) {
   // Calculate totals
   const totals = entries.reduce(
     (acc, entry) => ({
       calories: acc.calories + (entry.calories || 0),
-      protein: acc.protein + (entry.protein || 0)
+      protein: acc.protein + (entry.protein || 0),
     }),
-    { calories: 0, protein: 0 }
+    { calories: 0, protein: 0 },
   );
 
-  const caloriePercentage = targetCalories > 0 ? Math.min((totals.calories / targetCalories) * 100, 100) : 0;
-  const proteinPercentage = targetProtein > 0 ? Math.min((totals.protein / targetProtein) * 100, 100) : 0;
+  const caloriePercentage =
+    targetCalories > 0 ? Math.min((totals.calories / targetCalories) * 100, 100) : 0;
+  const proteinPercentage =
+    targetProtein > 0 ? Math.min((totals.protein / targetProtein) * 100, 100) : 0;
 
   // SVG donut chart settings
   const size = 60;
@@ -48,11 +55,11 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
       return '#10A37F'; // OpenAI green
     }
 
-    const isDeficit = targetCalories < maintenanceCalories;  // Cutting
-    const isSurplus = targetCalories > maintenanceCalories;  // Bulking
+    const isDeficit = targetCalories < maintenanceCalories; // Cutting
+    const isSurplus = targetCalories > maintenanceCalories; // Bulking
 
     const diff = totals.calories - targetCalories;
-    const percentDiff = (diff / targetCalories) * 100;  // Positive = above, negative = below
+    const percentDiff = (diff / targetCalories) * 100; // Positive = above, negative = below
 
     // Determine if we're on the "aligned" side (good direction)
     const isAligned = (isDeficit && diff < 0) || (isSurplus && diff > 0);
@@ -60,15 +67,15 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
     if (isAligned) {
       // ALIGNED SIDE (good direction) - Gradual thresholds
       const absDiff = Math.abs(percentDiff);
-      if (absDiff <= 10) return '#10A37F';  // green - 0-10%
-      if (absDiff <= 20) return '#F59E0B';  // yellow - 10-20%
-      if (absDiff <= 30) return '#F97316';  // orange - 20-30%
-      return '#EF4444';                     // red - >30%
+      if (absDiff <= 10) return '#10A37F'; // green - 0-10%
+      if (absDiff <= 20) return '#F59E0B'; // yellow - 10-20%
+      if (absDiff <= 30) return '#F97316'; // orange - 20-30%
+      return '#EF4444'; // red - >30%
     } else {
       // NON-ALIGNED SIDE (bad direction) - Strict threshold
       const absDiff = Math.abs(percentDiff);
-      if (absDiff <= 5) return '#10A37F';   // green - 0-5% tolerance
-      return '#EF4444';                     // red - >5%
+      if (absDiff <= 5) return '#10A37F'; // green - 0-5% tolerance
+      return '#EF4444'; // red - >5%
     }
   };
 
@@ -80,18 +87,17 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
     const percentBelow = ((targetProtein - totals.protein) / targetProtein) * 100;
 
     // Green: at or above target, or 0-10% below
-    if (percentBelow <= 10) return '#10A37F';  // green - 0-10% below
+    if (percentBelow <= 10) return '#10A37F'; // green - 0-10% below
 
     // Yellow: 10-20% below target
-    if (percentBelow <= 20) return '#F59E0B';  // yellow - 10-20% below
+    if (percentBelow <= 20) return '#F59E0B'; // yellow - 10-20% below
 
     // Orange: 20-30% below target
-    if (percentBelow <= 30) return '#F97316';  // orange - 20-30% below
+    if (percentBelow <= 30) return '#F97316'; // orange - 20-30% below
 
     // Red: more than 30% below target
     return '#EF4444'; // red - >30% below
   };
-
 
   // Get background gradient class based on percentage and color
   const getCalorieGradient = () => {
@@ -142,7 +148,9 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs font-bold text-gray-900">{Math.round(caloriePercentage)}%</span>
+            <span className="text-xs font-bold text-gray-900">
+              {Math.round(caloriePercentage)}%
+            </span>
           </div>
         </div>
         <div>
@@ -180,12 +188,16 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs font-bold text-gray-900">{Math.round(proteinPercentage)}%</span>
+            <span className="text-xs font-bold text-gray-900">
+              {Math.round(proteinPercentage)}%
+            </span>
           </div>
         </div>
         <div>
           <div className="text-xs text-gray-600 font-medium">Protein</div>
-          <div className="text-sm font-bold text-gray-900">{Math.round(totals.protein * 10) / 10}g</div>
+          <div className="text-sm font-bold text-gray-900">
+            {Math.round(totals.protein * 10) / 10}g
+          </div>
           <div className="text-xs text-gray-500">of {targetProtein}g</div>
         </div>
       </div>

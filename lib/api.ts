@@ -47,7 +47,7 @@ export const api = {
    */
   analyzeFood: async (
     description: string,
-    image?: string
+    image?: string,
   ): Promise<{
     name: string;
     calories: number;
@@ -74,7 +74,7 @@ export const api = {
   askCoach: async (
     message: string,
     context: CoachContext,
-    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>
+    conversationHistory?: Array<{ role: 'user' | 'assistant'; content: string }>,
   ): Promise<{
     response: string;
   }> => {
@@ -110,7 +110,7 @@ export const api = {
       calories: number;
       protein: number;
       maintenance: number;
-    }
+    },
   ): Promise<{
     mealTable: Array<{
       meal: string;

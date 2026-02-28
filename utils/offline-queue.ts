@@ -20,7 +20,7 @@ export const checkOnlineStatus = (): boolean => {
 };
 
 export const queueOperation = async (
-  operation: Omit<QueuedOperation, 'id' | 'timestamp'>
+  operation: Omit<QueuedOperation, 'id' | 'timestamp'>,
 ): Promise<void> => {
   const queue = cache.get<QueuedOperation[]>(CACHE_KEYS.offlineQueue) || [];
 

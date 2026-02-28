@@ -59,7 +59,7 @@ const formatDisplayDate = (dateStr: string): string => {
       weekday: 'short',
       month: 'short',
       day: 'numeric',
-      year: 'numeric'
+      year: 'numeric',
     });
   }
 };
@@ -181,7 +181,6 @@ export default function TrackScreen() {
         setSettings(freshSettings);
         setCoachReminder(reminder);
         setLoading(false);
-
       } catch (err: any) {
         // Handle authentication errors silently (user will be redirected)
         if (err?.message === 'Not authenticated') {
@@ -207,7 +206,9 @@ export default function TrackScreen() {
     };
   }, [currentDate]);
 
-  const handleFoodLogged = async (foodData: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>) => {
+  const handleFoodLogged = async (
+    foodData: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>,
+  ) => {
     // Start mutation - prevent background updates
     isMutatingRef.current = true;
 
@@ -257,7 +258,6 @@ export default function TrackScreen() {
 
         // End mutation AFTER reload completes successfully
         isMutatingRef.current = false;
-
       } catch (err) {
         console.error('Error adding entry:', err);
 
@@ -324,7 +324,6 @@ export default function TrackScreen() {
 
         // End mutation AFTER reload completes successfully
         isMutatingRef.current = false;
-
       } catch (err) {
         console.error('Error deleting entry:', err);
 
@@ -385,7 +384,7 @@ export default function TrackScreen() {
   const getCalorieColor = () => {
     const totals = entries.reduce(
       (acc, entry) => ({ calories: acc.calories + (entry.calories || 0) }),
-      { calories: 0 }
+      { calories: 0 },
     );
 
     if (totals.calories === 0 || settings.target_calories === 0) return '#9CA3AF'; // gray-400
@@ -400,10 +399,10 @@ export default function TrackScreen() {
 
     if (isAligned) {
       const absDiff = Math.abs(percentDiff);
-      if (absDiff <= 10) return '#10A37F';  // green
-      if (absDiff <= 20) return '#F59E0B';  // yellow
-      if (absDiff <= 30) return '#F97316';  // orange
-      return '#EF4444';                     // red
+      if (absDiff <= 10) return '#10A37F'; // green
+      if (absDiff <= 20) return '#F59E0B'; // yellow
+      if (absDiff <= 30) return '#F97316'; // orange
+      return '#EF4444'; // red
     } else {
       const absDiff = Math.abs(percentDiff);
       if (absDiff <= 5) return '#10A37F';
@@ -443,20 +442,35 @@ export default function TrackScreen() {
       style={{
         minHeight: '100dvh',
         WebkitOverflowScrolling: 'touch',
-        background: backgroundGradient
+        background: backgroundGradient,
       }}
     >
       {/* Error Message */}
       {error && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-lg w-11/12">
           <div className="bg-white border border-red-200 rounded-lg p-3 shadow-md flex items-center gap-2">
-            <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            <svg
+              className="w-4 h-4 text-red-600 flex-shrink-0"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
             </svg>
             <span className="text-red-800 text-sm flex-1">{error}</span>
             <button onClick={() => setError('')} className="text-gray-400 hover:text-gray-600">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
           </div>
@@ -469,9 +483,24 @@ export default function TrackScreen() {
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-base md:text-lg font-bold text-gray-900">Food Tracker</h1>
             <Link href="/settings" className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              <svg
+                className="w-5 h-5 text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                />
               </svg>
             </Link>
           </div>
@@ -482,8 +511,18 @@ export default function TrackScreen() {
               onClick={() => navigateDate(-1)}
               className="p-2 hover:bg-gray-100 rounded-lg transition-all"
             >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              <svg
+                className="w-4 h-4 text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
             </button>
 
@@ -496,7 +535,7 @@ export default function TrackScreen() {
                   {new Date(currentDate + 'T00:00:00').toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric',
-                    year: 'numeric'
+                    year: 'numeric',
                   })}
                 </div>
               </div>
@@ -518,17 +557,29 @@ export default function TrackScreen() {
                 return currentDate === formatDate(tomorrow);
               })()}
               className={`p-2 rounded-lg transition-all ${
-                (() => {
-                  const tomorrow = new Date();
-                  tomorrow.setDate(tomorrow.getDate() + 1);
-                  return currentDate === formatDate(tomorrow);
-                })()
+                (
+                  () => {
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    return currentDate === formatDate(tomorrow);
+                  }
+                )()
                   ? 'opacity-30 cursor-not-allowed'
                   : 'hover:bg-gray-100'
               }`}
             >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              <svg
+                className="w-4 h-4 text-gray-600"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M9 5l7 7-7 7"
+                />
               </svg>
             </button>
           </div>
@@ -552,8 +603,20 @@ export default function TrackScreen() {
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-white bg-opacity-80">
           <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-md flex items-center gap-3">
             <svg className="animate-spin h-5 w-5 text-gray-900" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              <circle
+                className="opacity-25"
+                cx="12"
+                cy="12"
+                r="10"
+                stroke="currentColor"
+                strokeWidth="4"
+                fill="none"
+              />
+              <path
+                className="opacity-75"
+                fill="currentColor"
+                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+              />
             </svg>
             <span className="text-gray-900 font-medium">Loading...</span>
           </div>
@@ -565,7 +628,7 @@ export default function TrackScreen() {
         className="flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 pt-3 bg-transparent"
         style={{
           paddingBottom: 'calc(200px + env(safe-area-inset-bottom, 0px))',
-          WebkitOverflowScrolling: 'touch'
+          WebkitOverflowScrolling: 'touch',
         }}
       >
         <div className="max-w-7xl mx-auto space-y-6">
