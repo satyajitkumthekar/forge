@@ -118,13 +118,7 @@ export default function SignInScreen() {
           </Box>
 
           {error ? (
-            <Box
-              bg="$red50"
-              borderColor="$red200"
-              borderWidth="$1"
-              borderRadius="$lg"
-              p="$3"
-            >
+            <Box bg="$red50" borderColor="$red200" borderWidth="$1" borderRadius="$lg" p="$3">
               <Text color="$red800" fontSize="$sm">
                 {error}
               </Text>

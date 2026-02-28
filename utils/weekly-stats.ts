@@ -31,7 +31,7 @@ export const getWeeklyStats = async (
   weekStart: Date,
   targetCalories: number,
   maintenanceCalories: number,
-  getDataForRange: (start: string, end: string) => Promise<Record<string, FoodEntry[]>>
+  getDataForRange: (start: string, end: string) => Promise<Record<string, FoodEntry[]>>,
 ): Promise<WeeklyStats> => {
   const weekEnd = addDays(weekStart, 6);
   const startDate = format(weekStart, 'yyyy-MM-dd');
@@ -56,7 +56,7 @@ export const getWeeklyStats = async (
         calories: acc.calories + (entry.calories || 0),
         protein: acc.protein + (entry.protein || 0),
       }),
-      { calories: 0, protein: 0 }
+      { calories: 0, protein: 0 },
     );
 
     dailyData.push({
@@ -67,9 +67,7 @@ export const getWeeklyStats = async (
   }
 
   // Calculate averages - EXCLUDE today and days with no food
-  const completedDaysWithFood = dailyData.filter(
-    day => day.date < today && day.calories > 0
-  );
+  const completedDaysWithFood = dailyData.filter((day) => day.date < today && day.calories > 0);
 
   const avgCaloriesTotal = completedDaysWithFood.reduce((sum, day) => sum + day.calories, 0);
   const avgProteinTotal = completedDaysWithFood.reduce((sum, day) => sum + day.protein, 0);

@@ -62,8 +62,13 @@ export const db = {
     /**
      * Add a new food entry
      */
-    add: async (date: string, entry: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>): Promise<FoodEntry> => {
-      const { data: { user } } = await supabase.auth.getUser();
+    add: async (
+      date: string,
+      entry: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>,
+    ): Promise<FoodEntry> => {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -84,10 +89,7 @@ export const db = {
      * Delete a food entry
      */
     delete: async (id: string): Promise<void> => {
-      const { error } = await supabase
-        .from('food_entries')
-        .delete()
-        .eq('id', id);
+      const { error } = await supabase.from('food_entries').delete().eq('id', id);
 
       if (error) throw error;
     },
@@ -101,7 +103,9 @@ export const db = {
      * Get user settings
      */
     get: async (): Promise<UserSettings> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -130,18 +134,23 @@ export const db = {
      * Update user settings
      */
     update: async (settings: Partial<UserSettings>): Promise<UserSettings> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('user_settings')
-        .upsert({
-          user_id: user.id,
-          ...settings,
-          updated_at: new Date().toISOString(),
-        }, {
-          onConflict: 'user_id',
-        })
+        .upsert(
+          {
+            user_id: user.id,
+            ...settings,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: 'user_id',
+          },
+        )
         .select()
         .single();
 
@@ -158,11 +167,14 @@ export const db = {
      * Check if user has remaining API calls
      */
     checkFood: async (): Promise<boolean> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .rpc('check_and_increment_rate_limit', { user_uuid: user.id });
+      const { data, error } = await supabase.rpc('check_and_increment_rate_limit', {
+        user_uuid: user.id,
+      });
 
       if (error) throw error;
       if (!data) throw new Error('Rate limit exceeded');
@@ -174,11 +186,14 @@ export const db = {
      * Check if user has remaining coach calls
      */
     checkCoach: async (): Promise<boolean> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .rpc('check_and_increment_coach_limit', { user_uuid: user.id });
+      const { data, error } = await supabase.rpc('check_and_increment_coach_limit', {
+        user_uuid: user.id,
+      });
 
       if (error) throw error;
       if (!data) throw new Error('Coach rate limit exceeded');
@@ -190,11 +205,12 @@ export const db = {
      * Get rate limit status
      */
     getStatus: async (): Promise<RateLimitStatus> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .rpc('get_rate_limit_status', { user_uuid: user.id });
+      const { data, error } = await supabase.rpc('get_rate_limit_status', { user_uuid: user.id });
 
       if (error) throw error;
       return data[0];
@@ -209,11 +225,12 @@ export const db = {
      * Check if user has access (waitlist system)
      */
     check: async (): Promise<boolean> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .rpc('check_user_access', { user_uuid: user.id });
+      const { data, error } = await supabase.rpc('check_user_access', { user_uuid: user.id });
 
       if (error) throw error;
       return data;
@@ -223,22 +240,24 @@ export const db = {
      * Update last active timestamp
      */
     updateLastActive: async (): Promise<void> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) return;
 
-      await supabase
-        .rpc('update_last_active', { user_uuid: user.id });
+      await supabase.rpc('update_last_active', { user_uuid: user.id });
     },
 
     /**
      * Get user's position in waitlist
      */
     getUserPosition: async (): Promise<UserPositionInfo> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { data, error } = await supabase
-        .rpc('get_user_position_info', { user_uuid: user.id });
+      const { data, error } = await supabase.rpc('get_user_position_info', { user_uuid: user.id });
 
       if (error) throw error;
       // Function returns array with one row
@@ -250,7 +269,7 @@ export const db = {
         rank: data[0].rank,
         totalUsers: data[0].total_users,
         maxAllowed: data[0].max_allowed,
-        hasAccess: data[0].has_access
+        hasAccess: data[0].has_access,
       };
     },
 
@@ -258,7 +277,9 @@ export const db = {
      * Get coach reminder for current user
      */
     getReminder: async (): Promise<string | null> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -280,17 +301,17 @@ export const db = {
      * Submit user feedback
      */
     submit: async (rating: number, type: string, message: string): Promise<void> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
-      const { error } = await supabase
-        .from('user_feedback')
-        .insert({
-          user_id: user.id,
-          rating,
-          feedback_type: type,
-          message,
-        });
+      const { error } = await supabase.from('user_feedback').insert({
+        user_id: user.id,
+        rating,
+        feedback_type: type,
+        message,
+      });
 
       if (error) throw error;
     },
@@ -299,7 +320,9 @@ export const db = {
      * Get user's feedback history
      */
     getHistory: async () => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
@@ -316,7 +339,9 @@ export const db = {
      * Get today's feedback count
      */
     getTodayCount: async (): Promise<number> => {
-      const { data: { user } } = await supabase.auth.getUser();
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const today = getAppDate();
@@ -340,13 +365,16 @@ export const db = {
     /**
      * Get food entries for any user (admin only - bypasses RLS)
      */
-    getUserFoodEntries: async (userId: string, startDate: string, endDate: string): Promise<FoodEntry[]> => {
-      const { data, error } = await supabase
-        .rpc('admin_get_user_food_entries', {
-          target_user_id: userId,
-          start_date: startDate,
-          end_date: endDate
-        });
+    getUserFoodEntries: async (
+      userId: string,
+      startDate: string,
+      endDate: string,
+    ): Promise<FoodEntry[]> => {
+      const { data, error } = await supabase.rpc('admin_get_user_food_entries', {
+        target_user_id: userId,
+        start_date: startDate,
+        end_date: endDate,
+      });
 
       if (error) throw error;
       return data || [];
@@ -359,7 +387,7 @@ export const db = {
       const [totalUsers, totalFoodLogs, totalCoachCalls] = await Promise.all([
         supabase.rpc('get_total_users'),
         supabase.rpc('get_total_food_logs'),
-        supabase.rpc('get_total_coach_calls')
+        supabase.rpc('get_total_coach_calls'),
       ]);
 
       if (totalUsers.error) throw totalUsers.error;
@@ -369,7 +397,7 @@ export const db = {
       return {
         totalUsers: totalUsers.data || 0,
         totalFoodLogs: totalFoodLogs.data || 0,
-        totalCoachCalls: totalCoachCalls.data || 0
+        totalCoachCalls: totalCoachCalls.data || 0,
       };
     },
 
@@ -380,7 +408,7 @@ export const db = {
       const [dau, dailyLogs, dailyCalls] = await Promise.all([
         supabase.rpc('get_daily_active_users', { days_back: daysBack }),
         supabase.rpc('get_daily_food_logs', { days_back: daysBack }),
-        supabase.rpc('get_daily_coach_calls', { days_back: daysBack })
+        supabase.rpc('get_daily_coach_calls', { days_back: daysBack }),
       ]);
 
       if (dau.error) throw dau.error;
@@ -390,7 +418,7 @@ export const db = {
       return {
         dailyActiveUsers: dau.data || [],
         dailyFoodLogs: dailyLogs.data || [],
-        dailyCoachCalls: dailyCalls.data || []
+        dailyCoachCalls: dailyCalls.data || [],
       };
     },
 
@@ -398,8 +426,7 @@ export const db = {
      * Get user metrics (admin only)
      */
     getUserMetrics: async (): Promise<UserMetric[]> => {
-      const { data, error } = await supabase
-        .rpc('get_user_metrics');
+      const { data, error } = await supabase.rpc('get_user_metrics');
 
       if (error) throw error;
       return data;
@@ -409,11 +436,10 @@ export const db = {
      * Update user's account tier
      */
     updateUserTier: async (userId: string, tier: 'basic' | 'pro' | 'admin'): Promise<void> => {
-      const { error } = await supabase
-        .rpc('admin_update_user_tier', {
-          target_user_id: userId,
-          new_tier: tier,
-        });
+      const { error } = await supabase.rpc('admin_update_user_tier', {
+        target_user_id: userId,
+        new_tier: tier,
+      });
 
       if (error) throw error;
     },
@@ -422,11 +448,10 @@ export const db = {
      * Toggle user's client flag
      */
     toggleClientFlag: async (userId: string, isClient: boolean): Promise<void> => {
-      const { error } = await supabase
-        .rpc('admin_toggle_client_flag', {
-          target_user_id: userId,
-          new_client_value: isClient,
-        });
+      const { error } = await supabase.rpc('admin_toggle_client_flag', {
+        target_user_id: userId,
+        new_client_value: isClient,
+      });
 
       if (error) throw error;
     },
@@ -435,11 +460,10 @@ export const db = {
      * Update user's coach reminder (admin only)
      */
     updateUserReminder: async (userId: string, reminder: string | null): Promise<void> => {
-      const { error } = await supabase
-        .rpc('admin_update_user_reminder', {
-          target_user_id: userId,
-          reminder_message: reminder,
-        });
+      const { error } = await supabase.rpc('admin_update_user_reminder', {
+        target_user_id: userId,
+        reminder_message: reminder,
+      });
 
       if (error) throw error;
     },
@@ -451,15 +475,14 @@ export const db = {
       userId: string,
       maintenanceCalories: number,
       targetCalories: number,
-      targetProtein: number
+      targetProtein: number,
     ): Promise<void> => {
-      const { error } = await supabase
-        .rpc('admin_update_user_macros', {
-          target_user_id: userId,
-          maintenance_cal: maintenanceCalories,
-          target_cal: targetCalories,
-          target_pro: targetProtein,
-        });
+      const { error } = await supabase.rpc('admin_update_user_macros', {
+        target_user_id: userId,
+        maintenance_cal: maintenanceCalories,
+        target_cal: targetCalories,
+        target_pro: targetProtein,
+      });
 
       if (error) throw error;
     },
@@ -468,8 +491,7 @@ export const db = {
      * Get daily active users (legacy - kept for compatibility)
      */
     getDailyActiveUsers: async (daysBack: number = 30) => {
-      const { data, error } = await supabase
-        .rpc('get_daily_active_users', { days_back: daysBack });
+      const { data, error } = await supabase.rpc('get_daily_active_users', { days_back: daysBack });
 
       if (error) throw error;
       return data;
@@ -483,11 +505,10 @@ export const db = {
       // Pass today's date to match dashboard calculations
       const today = getAppDate();
 
-      const { data, error } = await supabase
-        .rpc('get_coach_analytics', {
-          week_start_date: weekStartDate || null,
-          today_date: today
-        });
+      const { data, error } = await supabase.rpc('get_coach_analytics', {
+        week_start_date: weekStartDate || null,
+        today_date: today,
+      });
 
       if (error) throw error;
       return data || [];
@@ -502,8 +523,7 @@ export const db = {
      * Get max allowed users setting
      */
     getMaxAllowedUsers: async (): Promise<number> => {
-      const { data, error } = await supabase
-        .rpc('get_max_allowed_users');
+      const { data, error } = await supabase.rpc('get_max_allowed_users');
 
       if (error) throw error;
       return data;
@@ -525,8 +545,7 @@ export const db = {
      * Get total number of users with access
      */
     getTotalActiveUsers: async (): Promise<number> => {
-      const { data, error } = await supabase
-        .rpc('get_total_active_users');
+      const { data, error } = await supabase.rpc('get_total_active_users');
 
       if (error) throw error;
       return data;

@@ -28,7 +28,7 @@ export default function DayColumn({
   targetProtein,
   maintenanceCalories,
   viewMode,
-  isToday = false
+  isToday = false,
 }: DayColumnProps) {
   const formatDisplayDate = (dateStr: string) => {
     const d = new Date(dateStr + 'T00:00:00');

@@ -1,4 +1,4 @@
-const { getDefaultConfig } = require("expo/metro-config");
+const { getDefaultConfig } = require('expo/metro-config');
 const path = require('path');
 
 const config = getDefaultConfig(__dirname);
@@ -7,9 +7,6 @@ const config = getDefaultConfig(__dirname);
 config.resolver.sourceExts.push('web.ts', 'web.tsx', 'web.js', 'web.jsx');
 
 // Exclude Next.js API routes from Metro bundling (they're server-side only)
-config.resolver.blockList = [
-  /app\/api\/.*/,
-  /node_modules\/next\/.*/
-];
+config.resolver.blockList = [/app\/api\/.*/, /node_modules\/next\/.*/];
 
 module.exports = config;
