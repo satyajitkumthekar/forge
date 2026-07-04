@@ -6,6 +6,7 @@
 import React from 'react';
 import { View, Text, useWindowDimensions } from 'react-native';
 import { BarChart } from 'react-native-gifted-charts';
+import { parseYMD } from '@/utils/date';
 import type { DayData } from '@/types';
 
 interface WeeklyChartProps {
@@ -16,17 +17,17 @@ interface WeeklyChartProps {
 }
 
 export default function WeeklyChart({ dailyData, targetCalories, targetProtein, maintenanceCalories }: WeeklyChartProps) {
+  // Hooks must run unconditionally (before any early return)
+  const { width: windowWidth } = useWindowDimensions();
+  const chartWidth = Math.min(windowWidth - 48, 800); // Account for padding
+
   if (!dailyData || dailyData.length === 0) {
     return null;
   }
 
-  const { width: windowWidth } = useWindowDimensions();
-  const chartWidth = Math.min(windowWidth - 48, 800); // Account for padding
-
-  // Helper to get day name from date string
+  // Helper to get day name from date string (local parse; new Date("YYYY-MM-DD") is UTC)
   const getDayName = (dateStr: string) => {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('en-US', { weekday: 'short' });
+    return parseYMD(dateStr).toLocaleDateString('en-US', { weekday: 'short' });
   };
 
   // Prepare calories data with asymmetric color coding

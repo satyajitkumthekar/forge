@@ -3,10 +3,11 @@
  * ABSTRACTION: Uses AuthContext, not Supabase directly
  */
 
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { KeyboardAvoidingView, Platform } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { friendlyAuthError } from '@/lib/auth-errors';
 import {
   Box,
   VStack,
@@ -28,8 +29,17 @@ export default function SignInScreen() {
   const [error, setError] = useState('');
 
   const { signIn } = useAuth();
+  const failsafeRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (failsafeRef.current) clearTimeout(failsafeRef.current);
+    };
+  }, []);
 
   const handleSignIn = async () => {
+    if (loading) return;
+
     if (!email || !password) {
       setError('Please enter email and password');
       return;
@@ -41,10 +51,17 @@ export default function SignInScreen() {
     const { error: signInError } = await signIn(email, password);
 
     if (signInError) {
-      setError(signInError.message || 'Failed to sign in');
+      setError(friendlyAuthError(signInError));
       setLoading(false);
+      return;
     }
-    // Success handled by AuthContext
+
+    // Success: AuthContext + root layout handle the redirect. If it hasn't
+    // happened after 10s (e.g. access check failing), stop spinning forever.
+    failsafeRef.current = setTimeout(() => {
+      setLoading(false);
+      setError('Taking longer than expected. Please try again.');
+    }, 10000);
   };
 
   return (
@@ -99,6 +116,7 @@ export default function SignInScreen() {
                 placeholder="your@email.com"
                 autoCapitalize="none"
                 keyboardType="email-address"
+                returnKeyType="next"
               />
             </Input>
           </Box>
@@ -113,6 +131,8 @@ export default function SignInScreen() {
                 onChangeText={setPassword}
                 placeholder="••••••••"
                 type="password"
+                returnKeyType="go"
+                onSubmitEditing={handleSignIn}
               />
             </Input>
           </Box>

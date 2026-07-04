@@ -4,15 +4,12 @@
  */
 
 import { startOfWeek, format, addDays } from 'date-fns';
+import { appToday, parseYMD } from './date';
 import type { FoodEntry, WeeklyStats, DayData } from '../types';
 
-const getAppDate = (): string => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-};
-
 export const getWeekStart = (date: Date | string): Date => {
-  const d = typeof date === 'string' ? new Date(date) : date;
+  // parseYMD keeps string dates in local time; new Date("YYYY-MM-DD") is UTC
+  const d = typeof date === 'string' ? parseYMD(date) : date;
   return startOfWeek(d, { weekStartsOn: 1 }); // Monday
 };
 
@@ -36,7 +33,7 @@ export const getWeeklyStats = async (
   const weekEnd = addDays(weekStart, 6);
   const startDate = format(weekStart, 'yyyy-MM-dd');
   const endDate = format(weekEnd, 'yyyy-MM-dd');
-  const today = getAppDate(); // UTC date
+  const today = appToday();
 
   const allData = await getDataForRange(startDate, endDate);
 

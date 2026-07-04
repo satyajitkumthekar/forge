@@ -147,7 +147,7 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
         </div>
         <div>
           <div className="text-xs text-gray-600 font-medium">Calories</div>
-          <div className="text-sm font-bold text-gray-900">{totals.calories}</div>
+          <div className="text-sm font-bold text-gray-900">{Math.round(totals.calories)}</div>
           <div className="text-xs text-gray-500">of {targetCalories}</div>
         </div>
       </div>

@@ -6,55 +6,48 @@
 import React, { useState, useEffect } from 'react';
 import { db } from '@/lib/database';
 import { getWeeklyStats, getWeekStart, formatWeekRange } from '@/utils/weekly-stats';
+import { appToday } from '@/utils/date';
+import { toast } from '@/lib/toast';
 import { format } from 'date-fns';
 import WeeklyChart from '@/components/WeeklyChart';
 import type { WeeklyStats, UserSettings } from '@/types';
 
-const getTodayDate = (): string => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-};
-
 export default function DashboardScreen() {
-  const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date(getTodayDate())));
+  const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(appToday()));
   const [stats, setStats] = useState<WeeklyStats | null>(null);
   const [settings, setSettings] = useState<UserSettings | null>(null);
-  const [loading, setLoading] = useState(true);
+  // Split loading so week navigation stays visible while a week's stats load
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+
+  const loadSettings = async () => {
+    setLoadError(false);
+    try {
+      const userSettings = await db.settings.get();
+      setSettings(userSettings);
+    } catch (err) {
+      console.error('[Dashboard] Error loading settings:', err);
+      setLoadError(true);
+    }
+  };
 
   useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        console.log('📊 [Dashboard] Loading settings...');
-        const userSettings = await db.settings.get();
-        console.log('📊 [Dashboard] Settings loaded:', userSettings);
-        setSettings(userSettings);
-      } catch (err) {
-        console.error('❌ [Dashboard] Error loading settings:', err);
-      }
-    };
-
     loadSettings();
   }, []);
 
   useEffect(() => {
-    if (!settings) {
-      console.log('📊 [Dashboard] Waiting for settings...');
-      return;
-    }
+    if (!settings) return;
 
     const loadStats = async () => {
-      setLoading(true);
+      setStatsLoading(true);
       try {
-        console.log('📊 [Dashboard] Loading stats for week:', weekStart);
         // Use database abstraction to get range
         const weeklyStats = await getWeeklyStats(
           weekStart,
           settings.target_calories,
           settings.maintenance_calories,
           async (start: string, end: string) => {
-            console.log('📊 [Dashboard] Fetching food entries from', start, 'to', end);
             const entries = await db.food.getRange(start, end);
-            console.log('📊 [Dashboard] Got', entries.length, 'food entries');
             // Group entries by date
             const grouped: Record<string, typeof entries> = {};
             for (const entry of entries) {
@@ -66,12 +59,18 @@ export default function DashboardScreen() {
             return grouped;
           }
         );
-        console.log('📊 [Dashboard] Weekly stats calculated:', weeklyStats);
         setStats(weeklyStats);
       } catch (err) {
-        console.error('❌ [Dashboard] Error loading stats:', err);
+        console.error('[Dashboard] Error loading stats:', err);
+        if (stats === null) {
+          // First load failed — show the error screen with Retry
+          setLoadError(true);
+        } else {
+          // Week navigation failed — keep the current week's data visible
+          toast.error('Could not load that week. Please try again.');
+        }
       } finally {
-        setLoading(false);
+        setStatsLoading(false);
       }
     };
 
@@ -84,7 +83,7 @@ export default function DashboardScreen() {
 
     // Don't allow navigating to future weeks
     if (direction > 0) {
-      const currentWeekStart = getWeekStart(new Date(getTodayDate()));
+      const currentWeekStart = getWeekStart(appToday());
       if (format(newWeekStart, 'yyyy-MM-dd') > format(currentWeekStart, 'yyyy-MM-dd')) {
         return;
       }
@@ -94,15 +93,33 @@ export default function DashboardScreen() {
   };
 
   const goToCurrentWeek = () => {
-    setWeekStart(getWeekStart(new Date(getTodayDate())));
+    setWeekStart(getWeekStart(appToday()));
   };
 
   const isCurrentWeek = () => {
-    const currentWeekStart = getWeekStart(new Date(getTodayDate()));
+    const currentWeekStart = getWeekStart(appToday());
     return format(weekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
   };
 
-  if (loading || !stats || !settings) {
+  if (loadError && (!settings || !stats)) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50 p-6">
+        <div className="max-w-sm w-full bg-white rounded-xl border border-gray-200 p-6 shadow-sm text-center">
+          <p className="text-sm font-semibold text-gray-900 mb-1">Couldn&apos;t load your dashboard</p>
+          <p className="text-xs text-gray-500 mb-4">Check your connection and try again.</p>
+          <button
+            onClick={loadSettings}
+            className="w-full min-h-[44px] bg-black hover:bg-gray-800 active:bg-gray-700 text-white px-4 rounded-lg transition-all font-medium text-sm"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Full-screen spinner only on the very first paint
+  if (!settings || !stats) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="flex items-center gap-2 text-gray-400">
@@ -235,8 +252,16 @@ export default function DashboardScreen() {
           </div>
         </div>
 
-        {/* Empty Week Message */}
-        {stats.daysLogged === 0 ? (
+        {/* Metrics area: spinner during week change, nav above stays visible */}
+        {statsLoading ? (
+          <div className="bg-white rounded-xl border border-gray-200 p-8 shadow-sm flex items-center justify-center gap-2 text-gray-400">
+            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="text-sm">Loading...</span>
+          </div>
+        ) : stats.daysLogged === 0 ? (
           <div className="bg-gray-50 rounded-xl border border-gray-200 p-6 text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-gray-200 rounded-full flex items-center justify-center">
               <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">

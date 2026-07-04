@@ -96,11 +96,4 @@ export const cache = {
   },
 };
 
-// Cache key helpers
-export const CACHE_KEYS = {
-  entries: (date: string) => `entries_${date}`,
-  settings: 'user_settings',
-  chatMessages: 'coach_messages',
-  offlineQueue: 'offline_queue',
-  frequentItems: 'frequent_items',
-};
+// CACHE_KEYS lives in lib/enhanced-cache.ts — the single source of truth.

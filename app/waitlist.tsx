@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { ActivityIndicator } from 'react-native';
-import { Box, VStack, Text, HStack } from '@gluestack-ui/themed';
+import { Box, VStack, Text, HStack, Pressable } from '@gluestack-ui/themed';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/database';
 import type { UserPositionInfo } from '@/types';
@@ -15,18 +15,20 @@ export default function WaitlistScreen() {
   const [positionInfo, setPositionInfo] = useState<UserPositionInfo | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const loadWaitlistInfo = async () => {
-      try {
-        const info = await db.access.getUserPosition();
-        setPositionInfo(info);
-      } catch (err) {
-        console.error('Error loading waitlist info:', err);
-      } finally {
-        setLoading(false);
-      }
-    };
+  const loadWaitlistInfo = async () => {
+    setLoading(true);
+    try {
+      const info = await db.access.getUserPosition();
+      setPositionInfo(info);
+    } catch (err) {
+      console.error('Error loading waitlist info:', err);
+      setPositionInfo(null);
+    } finally {
+      setLoading(false);
+    }
+  };
 
+  useEffect(() => {
     loadWaitlistInfo();
   }, []);
 
@@ -34,6 +36,35 @@ export default function WaitlistScreen() {
     return (
       <Box flex={1} bg="#000000" alignItems="center" justifyContent="center">
         <ActivityIndicator size="large" color="#fff" />
+      </Box>
+    );
+  }
+
+  // Position couldn't be loaded — never render "#undefined" to a prospect
+  if (!positionInfo) {
+    return (
+      <Box flex={1} bg="#000000" alignItems="center" justifyContent="center" p={16}>
+        <VStack alignItems="center" sx={{ maxWidth: 400 }}>
+          <Text fontSize={48} mb={24}>🚀</Text>
+          <Text fontSize={28} fontWeight="700" color="white" mb={12} textAlign="center">
+            You&apos;re on the list!
+          </Text>
+          <Text fontSize={16} color="#9CA3AF" mb={24} textAlign="center">
+            We couldn&apos;t load your position right now. Check your connection and try again.
+          </Text>
+          <Pressable
+            bg="white"
+            borderRadius={12}
+            px={24}
+            py={12}
+            onPress={loadWaitlistInfo}
+            $active-opacity={0.8}
+          >
+            <Text fontSize={16} fontWeight="600" color="#000000">
+              Retry
+            </Text>
+          </Pressable>
+        </VStack>
       </Box>
     );
   }

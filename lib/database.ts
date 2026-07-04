@@ -16,14 +16,12 @@ import type {
   CoachAnalyticsRow,
 } from '../types';
 
-const getAppDate = (): string => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-};
+import { appToday, formatYMD } from '../utils/date';
 
-const formatDateToString = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
+// Canonical local-time date helpers (see utils/date.ts); UTC toISOString
+// shifted the day for users west of Greenwich.
+const getAppDate = appToday;
+const formatDateToString = formatYMD;
 
 export const db = {
   // ============================================
@@ -155,7 +153,9 @@ export const db = {
   // ============================================
   rateLimit: {
     /**
-     * Check if user has remaining API calls
+     * Check if user has remaining API calls.
+     * Returns false when the limit is hit (callers show a friendly message);
+     * throws only on auth/RPC errors.
      */
     checkFood: async (): Promise<boolean> => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -165,13 +165,12 @@ export const db = {
         .rpc('check_and_increment_rate_limit', { user_uuid: user.id });
 
       if (error) throw error;
-      if (!data) throw new Error('Rate limit exceeded');
-
-      return true;
+      return Boolean(data);
     },
 
     /**
-     * Check if user has remaining coach calls
+     * Check if user has remaining coach calls.
+     * Returns false when the limit is hit; throws only on auth/RPC errors.
      */
     checkCoach: async (): Promise<boolean> => {
       const { data: { user } } = await supabase.auth.getUser();
@@ -181,9 +180,7 @@ export const db = {
         .rpc('check_and_increment_coach_limit', { user_uuid: user.id });
 
       if (error) throw error;
-      if (!data) throw new Error('Coach rate limit exceeded');
-
-      return true;
+      return Boolean(data);
     },
 
     /**
@@ -197,6 +194,7 @@ export const db = {
         .rpc('get_rate_limit_status', { user_uuid: user.id });
 
       if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Rate limit status unavailable');
       return data[0];
     },
   },

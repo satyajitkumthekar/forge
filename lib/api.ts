@@ -26,10 +26,12 @@ const invokeFunction = async <T>(functionName: string, body: any): Promise<T> =>
 
     return data as T;
   } catch (error) {
+    // Rethrow as-is: wrapping produced nested "API request failed: Function
+    // error: ..." strings that leaked into user-facing error messages
     if (error instanceof Error) {
-      throw new Error(`API request failed: ${error.message}`);
+      throw error;
     }
-    throw new Error('API request failed');
+    throw new Error('Request failed. Please try again.');
   }
 };
 

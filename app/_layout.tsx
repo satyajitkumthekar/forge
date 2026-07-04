@@ -1,7 +1,7 @@
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
@@ -11,9 +11,9 @@ import Head from 'expo-router/head';
 import { Platform } from 'react-native';
 import './global.css';
 
-import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider, useAuth } from '../contexts/AuthContext';
 import { db } from '@/lib/database';
+import ToastHost from '@/components/ui/Toast';
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -48,14 +48,9 @@ export default function RootLayout() {
   // Register service worker for PWA (web only)
   useEffect(() => {
     if (Platform.OS === 'web' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('/service-worker.js')
-        .then((registration) => {
-          console.log('Service Worker registered:', registration);
-        })
-        .catch((error) => {
-          console.error('Service Worker registration failed:', error);
-        });
+      navigator.serviceWorker.register('/service-worker.js').catch((error) => {
+        console.error('Service Worker registration failed:', error);
+      });
     }
   }, []);
 
@@ -72,14 +67,17 @@ export default function RootLayout() {
   );
 }
 
-function useProtectedRoute(user: any) {
+function useProtectedRoute(user: any, authLoading: boolean) {
   const segments = useSegments();
   const router = useRouter();
+  const navigationState = useRootNavigationState();
   const [hasAccess, setHasAccess] = useState<boolean | null>(null);
   const [checkingAccess, setCheckingAccess] = useState(false);
 
   // Check access when user changes
   useEffect(() => {
+    let cancelled = false;
+
     const checkAccess = async () => {
       if (!user) {
         setHasAccess(null);
@@ -88,57 +86,62 @@ function useProtectedRoute(user: any) {
 
       setCheckingAccess(true);
       try {
-        const access = await db.access.check();
-        setHasAccess(access);
+        let access: boolean;
+        try {
+          access = await db.access.check();
+        } catch {
+          // One retry after a short backoff for transient failures
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          access = await db.access.check();
+        }
+        if (!cancelled) setHasAccess(access);
       } catch (err) {
         console.error('Error checking access:', err);
-        setHasAccess(true); // Default to true on error to avoid locking users out
+        // Fail closed: unknown access never grants entry to the app.
+        // The user stays where they are until a check succeeds.
+        if (!cancelled) setHasAccess(null);
       } finally {
-        setCheckingAccess(false);
+        if (!cancelled) setCheckingAccess(false);
       }
     };
 
     checkAccess();
+
+    return () => {
+      cancelled = true;
+    };
   }, [user]);
 
   useEffect(() => {
-    // Wait for the router to be ready
-    if (!router) return;
+    // Never navigate while auth state is unknown: the layout renders null
+    // (no navigator mounted) during loading, and navigating then crashes
+    // with "Attempted to navigate before mounting the Root Layout"
+    if (authLoading) return;
+
+    // Wait until the root navigator is mounted before navigating
+    if (!navigationState?.key) return;
 
     const inAuthGroup = segments[0] === '(auth)';
     const onWaitlist = segments[0] === 'waitlist';
 
-    // Use setTimeout to ensure navigation happens after mount
-    const timeout = setTimeout(() => {
-      if (!user && !inAuthGroup) {
-        // Redirect to sign-in if not authenticated
-        router.replace('/sign-in');
-      } else if (user && inAuthGroup) {
-        // Check access before redirecting to app
-        if (checkingAccess) return; // Wait for access check
-
-        if (hasAccess === false) {
-          // User doesn't have access, redirect to waitlist
-          router.replace('/waitlist');
-        } else {
-          // User has access, redirect to app
-          router.replace('/(tabs)');
-        }
-      } else if (user && !onWaitlist && hasAccess === false) {
-        // User is authenticated but doesn't have access
-        router.replace('/waitlist');
-      }
-    }, 0);
-
-    return () => clearTimeout(timeout);
-  }, [user, segments, router, hasAccess, checkingAccess]);
+    if (!user && !inAuthGroup) {
+      // Redirect to sign-in if not authenticated
+      router.replace('/sign-in');
+    } else if (user && inAuthGroup) {
+      // Only redirect on a definitive access answer (fail closed on null)
+      if (checkingAccess || hasAccess === null) return;
+      router.replace(hasAccess ? '/(tabs)' : '/waitlist');
+    } else if (user && !onWaitlist && hasAccess === false) {
+      // User is authenticated but doesn't have access
+      router.replace('/waitlist');
+    }
+  }, [user, authLoading, segments, router, navigationState?.key, hasAccess, checkingAccess]);
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
   const { user, loading } = useAuth();
 
-  useProtectedRoute(user);
+  useProtectedRoute(user, loading);
 
   // Show nothing while loading or during authentication redirect
   if (loading) {
@@ -156,6 +159,7 @@ function RootLayoutNav() {
         <Stack.Screen name="waitlist" options={{ headerShown: false }} />
         <Stack.Screen name="settings" options={{ presentation: 'modal' }} />
       </Stack>
+      <ToastHost />
     </ThemeProvider>
   );
 }

@@ -9,7 +9,12 @@ import { Pressable } from 'react-native';
 import { HStack } from '@gluestack-ui/themed';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '@/lib/database';
+import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import Svg, { Path } from 'react-native-svg';
+
+// Account type changes rarely; cache it so the Admin tab doesn't pop in
+// after an async round-trip on every mount
+const ACCOUNT_TYPE_TTL = 60 * 60 * 1000;
 
 // Custom modern icon components
 const TrackIcon = ({ color }: { color: string }) => (
@@ -45,13 +50,16 @@ const AnalyticsIcon = ({ color }: { color: string }) => (
 export default function TabLayout() {
   const router = useRouter();
   const { signOut } = useAuth();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(
+    () => getCached<string>(CACHE_KEYS.accountType) === 'admin'
+  );
 
-  // Check if user is admin
+  // Check if user is admin (cache-first, revalidate in background)
   useEffect(() => {
     const checkAdminStatus = async () => {
       try {
         const status = await db.rateLimit.getStatus();
+        setCached(CACHE_KEYS.accountType, status.account_type, ACCOUNT_TYPE_TTL);
         setIsAdmin(status.account_type === 'admin');
       } catch (err) {
         console.error('Error checking admin status:', err);

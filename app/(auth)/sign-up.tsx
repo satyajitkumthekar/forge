@@ -7,6 +7,7 @@ import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
+import { friendlyAuthError } from '@/lib/auth-errors';
 import {
   Box,
   VStack,
@@ -32,6 +33,8 @@ export default function SignUpScreen() {
   const { signUp } = useAuth();
 
   const handleSignUp = async () => {
+    if (loading) return;
+
     if (!email || !password || !confirmPassword) {
       setError('Please fill in all fields');
       return;
@@ -53,7 +56,7 @@ export default function SignUpScreen() {
     const { error: signUpError } = await signUp(email, password);
 
     if (signUpError) {
-      setError(signUpError.message || 'Failed to sign up');
+      setError(friendlyAuthError(signUpError));
       setLoading(false);
     } else {
       setSuccess(true);
@@ -185,6 +188,8 @@ export default function SignUpScreen() {
                 onChangeText={setConfirmPassword}
                 placeholder="••••••••"
                 type="password"
+                returnKeyType="go"
+                onSubmitEditing={handleSignUp}
               />
             </Input>
           </Box>

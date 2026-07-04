@@ -14,60 +14,13 @@ import MacroTable from '@/components/MacroTable';
 import FoodLogView from '@/components/FoodLogView';
 import Totals from '@/components/Totals';
 import FrequentItems from '@/components/FrequentItems';
+import { appToday, todayLocal, addDaysYMD, maxNavigableDate, formatDisplayDate, parseYMD } from '@/utils/date';
 import type { FoodEntry, UserSettings, FrequentItem } from '@/types';
-
-// Date utility functions
-const getTodayDate = (): string => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-};
-
-const getSmartInitialDate = (): string => {
-  const now = new Date();
-
-  // Get local date components
-  let year = now.getFullYear();
-  let month = now.getMonth();
-  let day = now.getDate();
-
-  // If before 3 AM local time, use yesterday's date
-  // (people logging late night food want it to count for "today" not "tomorrow")
-  if (now.getHours() < 3) {
-    const yesterday = new Date(year, month, day - 1);
-    year = yesterday.getFullYear();
-    month = yesterday.getMonth();
-    day = yesterday.getDate();
-  }
-
-  // Create UTC date string from local date components
-  const targetDate = new Date(Date.UTC(year, month, day, 0, 0, 0, 0));
-  return targetDate.toISOString().split('T')[0];
-};
-
-const formatDate = (date: Date): string => {
-  return date.toISOString().split('T')[0];
-};
-
-const formatDisplayDate = (dateStr: string): string => {
-  const todayStr = getTodayDate();
-
-  if (dateStr === todayStr) {
-    return 'Today';
-  } else {
-    // Show: "Sun, Feb 2, 2026" for all non-today dates
-    return new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', {
-      weekday: 'short',
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric'
-    });
-  }
-};
 
 // Note: CACHE_KEYS now imported from enhanced-cache for consistency
 
 export default function TrackScreen() {
-  const [currentDate, setCurrentDate] = useState(getSmartInitialDate());
+  const [currentDate, setCurrentDate] = useState(appToday());
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [settings, setSettings] = useState<UserSettings>({
     id: '',
@@ -87,8 +40,9 @@ export default function TrackScreen() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [coachReminder, setCoachReminder] = useState<string | null>(null);
 
-  // Track if we're currently mutating to prevent race conditions
-  const isMutatingRef = React.useRef(false);
+  // Monotonic sequence guard: bumping it invalidates any in-flight background
+  // load, so stale revalidations can never overwrite newer data or mutations
+  const loadSeqRef = React.useRef(0);
 
   // Process offline queue on mount
   useEffect(() => {
@@ -103,12 +57,8 @@ export default function TrackScreen() {
   useEffect(() => {
     const loadFrequentItems = async () => {
       try {
-        const today = new Date();
-        const sevenDaysAgo = new Date(today);
-        sevenDaysAgo.setDate(today.getDate() - 7);
-
-        const startDate = formatDate(sevenDaysAgo);
-        const endDate = formatDate(today);
+        const endDate = todayLocal();
+        const startDate = addDaysYMD(endDate, -7);
 
         // Use database abstraction
         const allData = await db.food.getRange(startDate, endDate);
@@ -137,6 +87,8 @@ export default function TrackScreen() {
     let isMounted = true;
 
     const loadData = async () => {
+      const seq = ++loadSeqRef.current;
+
       try {
         setError('');
 
@@ -145,16 +97,14 @@ export default function TrackScreen() {
         const cachedEntries = getCached<FoodEntry[]>(cacheKey);
         const cachedSettings = getCached<UserSettings>(CACHE_KEYS.settings);
 
-        if (cachedEntries !== null && cachedSettings !== null) {
-          // Show cached data immediately (no loading spinner!)
-          if (isMounted) {
-            setEntries(cachedEntries);
+        if (isMounted) {
+          // Never leave the previous date's entries showing while an uncached
+          // date loads — clear so totals/list don't flash stale data
+          setEntries(cachedEntries ?? []);
+          if (cachedSettings !== null) {
             setSettings(cachedSettings);
-            setLoading(false);
           }
-        } else {
-          // No cache - show loading spinner
-          setLoading(true);
+          setLoading(cachedEntries === null);
         }
 
         // PHASE 2: Fetch fresh data from database (revalidate in background)
@@ -166,11 +116,9 @@ export default function TrackScreen() {
 
         if (!isMounted) return;
 
-        // Skip update if we're currently mutating (prevents race condition)
-        if (isMutatingRef.current) {
-          console.log('Skipping background update during mutation');
-          return;
-        }
+        // Superseded by a mutation or a newer load — discard, the newer
+        // operation is responsible for the final state
+        if (seq !== loadSeqRef.current) return;
 
         // Update cache (writes to both L1 and L2)
         setCached(cacheKey, freshEntries);
@@ -185,7 +133,6 @@ export default function TrackScreen() {
       } catch (err: any) {
         // Handle authentication errors silently (user will be redirected)
         if (err?.message === 'Not authenticated') {
-          console.log('User not authenticated, will redirect...');
           if (isMounted) {
             setLoading(false);
           }
@@ -208,8 +155,12 @@ export default function TrackScreen() {
   }, [currentDate]);
 
   const handleFoodLogged = async (foodData: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>) => {
-    // Start mutation - prevent background updates
-    isMutatingRef.current = true;
+    // Invalidate any in-flight background load; this mutation owns the final state
+    loadSeqRef.current++;
+
+    // Captured before the optimistic update so a failed add rolls back to
+    // exactly what was showing (not a stale closure re-read after awaits)
+    const originalEntries = entries;
 
     try {
       // Optimistic update with temp ID
@@ -240,8 +191,6 @@ export default function TrackScreen() {
         });
         setError('Offline: Entry saved and will sync when online.');
         setTimeout(() => setError(''), 3000);
-        // End mutation here for offline case
-        isMutatingRef.current = false;
         return;
       }
 
@@ -255,9 +204,6 @@ export default function TrackScreen() {
         setCached(cacheKey, updatedEntries);
         setDataVersion((prev) => prev + 1);
 
-        // End mutation AFTER reload completes successfully
-        isMutatingRef.current = false;
-
       } catch (err) {
         console.error('Error adding entry:', err);
 
@@ -270,22 +216,19 @@ export default function TrackScreen() {
           setError('Connection lost: Entry saved and will sync when online.');
         } else {
           setError('Failed to add entry. Please try again.');
-          setEntries(entries);
-          setCached(cacheKey, entries);
+          setEntries(originalEntries);
+          setCached(cacheKey, originalEntries);
         }
-        // End mutation after error handling
-        isMutatingRef.current = false;
       }
     } catch (err) {
       // Catch any unexpected errors
       console.error('Unexpected error in handleFoodLogged:', err);
-      isMutatingRef.current = false;
     }
   };
 
   const handleDeleteEntry = async (entryId: string) => {
-    // Start mutation - prevent background updates
-    isMutatingRef.current = true;
+    // Invalidate any in-flight background load; this mutation owns the final state
+    loadSeqRef.current++;
 
     try {
       const originalEntries = entries;
@@ -307,8 +250,6 @@ export default function TrackScreen() {
         });
         setError('Offline: Entry deleted and will sync when online.');
         setTimeout(() => setError(''), 3000);
-        // End mutation here for offline case
-        isMutatingRef.current = false;
         return;
       }
 
@@ -321,9 +262,6 @@ export default function TrackScreen() {
         setEntries(updatedEntries);
         setCached(cacheKey, updatedEntries);
         setDataVersion((prev) => prev + 1);
-
-        // End mutation AFTER reload completes successfully
-        isMutatingRef.current = false;
 
       } catch (err) {
         console.error('Error deleting entry:', err);
@@ -340,13 +278,10 @@ export default function TrackScreen() {
           setEntries(originalEntries);
           setCached(cacheKey, originalEntries);
         }
-        // End mutation after error handling
-        isMutatingRef.current = false;
       }
     } catch (err) {
       // Catch any unexpected errors
       console.error('Unexpected error in handleDeleteEntry:', err);
-      isMutatingRef.current = false;
     }
   };
 
@@ -364,21 +299,16 @@ export default function TrackScreen() {
   };
 
   const navigateDate = (days: number) => {
-    const newDate = new Date(currentDate);
-    newDate.setDate(newDate.getDate() + days);
-    const newDateStr = formatDate(newDate);
-    const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const tomorrowStr = formatDate(tomorrow);
+    const newDateStr = addDaysYMD(currentDate, days);
 
     // Allow dates up to tomorrow
-    if (newDateStr <= tomorrowStr) {
+    if (newDateStr <= maxNavigableDate()) {
       setCurrentDate(newDateStr);
     }
   };
 
   const goToToday = () => {
-    setCurrentDate(getTodayDate());
+    setCurrentDate(appToday());
   };
 
   // Calculate calorie color for gradient
@@ -437,6 +367,10 @@ export default function TrackScreen() {
 
   const backgroundGradient = getPastelGradient(calorieColor);
 
+  // Computed once per render so the label, Today pill, and nav guard always agree
+  const isAtMaxDate = currentDate >= maxNavigableDate();
+  const isOnToday = currentDate === appToday();
+
   return (
     <div
       className="flex flex-col relative"
@@ -493,14 +427,14 @@ export default function TrackScreen() {
                   {formatDisplayDate(currentDate)}
                 </div>
                 <div className="text-xs text-gray-500 mt-0.5">
-                  {new Date(currentDate + 'T00:00:00').toLocaleDateString('en-US', {
+                  {parseYMD(currentDate).toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric',
                     year: 'numeric'
                   })}
                 </div>
               </div>
-              {currentDate !== getTodayDate() && (
+              {!isOnToday && (
                 <button
                   onClick={goToToday}
                   className="px-3 py-1 bg-black text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-all"
@@ -512,17 +446,9 @@ export default function TrackScreen() {
 
             <button
               onClick={() => navigateDate(1)}
-              disabled={(() => {
-                const tomorrow = new Date();
-                tomorrow.setDate(tomorrow.getDate() + 1);
-                return currentDate === formatDate(tomorrow);
-              })()}
+              disabled={isAtMaxDate}
               className={`p-2 rounded-lg transition-all ${
-                (() => {
-                  const tomorrow = new Date();
-                  tomorrow.setDate(tomorrow.getDate() + 1);
-                  return currentDate === formatDate(tomorrow);
-                })()
+                isAtMaxDate
                   ? 'opacity-30 cursor-not-allowed'
                   : 'hover:bg-gray-100'
               }`}
@@ -546,19 +472,6 @@ export default function TrackScreen() {
           />
         </div>
       </div>
-
-      {/* Loading Spinner */}
-      {loading && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-white bg-opacity-80">
-          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-md flex items-center gap-3">
-            <svg className="animate-spin h-5 w-5 text-gray-900" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
-            <span className="text-gray-900 font-medium">Loading...</span>
-          </div>
-        </div>
-      )}
 
       {/* Scrollable Content */}
       <div
@@ -594,7 +507,15 @@ export default function TrackScreen() {
           </div>
 
           {/* Conditional View Rendering */}
-          {viewMode === 'table' ? (
+          {loading ? (
+            <div className="bg-white/70 backdrop-blur-sm rounded-xl border border-gray-200 p-8 shadow-sm flex items-center justify-center gap-3">
+              <svg className="animate-spin h-5 w-5 text-gray-900" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+              </svg>
+              <span className="text-gray-900 font-medium text-sm">Loading...</span>
+            </div>
+          ) : viewMode === 'table' ? (
             <MacroTable
               entries={entries}
               onDeleteEntry={handleDeleteEntry}

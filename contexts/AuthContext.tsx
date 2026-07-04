@@ -5,6 +5,7 @@
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
+import { setCacheUser, clearUserCache } from '../lib/enhanced-cache';
 import type { User } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -31,19 +32,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   useEffect(() => {
     // Check active session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
+    supabase.auth
+      .getSession()
+      .then(({ data: { session } }) => {
+        setCacheUser(session?.user?.id ?? null);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      })
+      .catch((err) => {
+        // Without this, a failed session fetch leaves the app on a blank
+        // screen forever (loading never flips false)
+        console.error('[Auth] Failed to restore session:', err);
+        setUser(null);
+        setLoading(false);
+      });
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        // Clear the signed-out user's cached data (entries, settings, chat)
+        // BEFORE unbinding, so nothing lingers on shared devices
+        clearUserCache();
+      }
+      setCacheUser(session?.user?.id ?? null);
       setUser(session?.user ?? null);
       setLoading(false);
-
-      if (event === 'SIGNED_IN') {
-        console.log('[Auth] User signed in');
-      }
     });
 
     return () => subscription.unsubscribe();

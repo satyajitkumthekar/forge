@@ -9,18 +9,17 @@ import { View, Text, useWindowDimensions } from 'react-native';
 import { LineChart } from 'react-native-gifted-charts';
 import { db } from '@/lib/database';
 import { api } from '@/lib/api';
+import { toast } from '@/lib/toast';
 import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { getWeekStart, formatWeekRange, getWeeklyStats } from '@/utils/weekly-stats';
+import { appToday } from '@/utils/date';
 import { format, addDays } from 'date-fns';
 import type { AnalyticsSummary, DailyMetrics, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis } from '@/types';
 
 // Cache TTL: 5 minutes (analytics don't need to be real-time)
 const ANALYTICS_CACHE_TTL = 5 * 60 * 1000;
 
-const getTodayDate = (): string => {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-};
+const getTodayDate = (): string => appToday();
 
 export default function AnalyticsScreen() {
   const { width: windowWidth } = useWindowDimensions();
@@ -47,7 +46,7 @@ export default function AnalyticsScreen() {
   const [maxAllowedUsers, setMaxAllowedUsers] = useState(100);
   const [totalActiveUsers, setTotalActiveUsers] = useState(0);
   const [savedAdminControls, setSavedAdminControls] = useState(false);
-  const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(new Date(getTodayDate())));
+  const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(getTodayDate()));
 
   // Expandable rows state
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -135,33 +134,22 @@ export default function AnalyticsScreen() {
       }
 
       // PHASE 2: Fetch fresh data (revalidate in background)
-      console.log('[Analytics] Fetching fresh data...');
 
-      console.log('[Analytics] Fetching summary...');
       const summaryData = await db.analytics.getSummary();
-      console.log('[Analytics] Summary fetched');
 
-      console.log('[Analytics] Fetching daily metrics...');
       const metricsData = await db.analytics.getDailyMetrics(30);
-      console.log('[Analytics] Daily metrics fetched');
 
-      console.log('[Analytics] Fetching user metrics...');
       const usersData = await db.analytics.getUserMetrics();
-      console.log('[Analytics] User metrics fetched');
 
-      console.log('[Analytics] Fetching coach analytics...');
       const weekStartStr = format(weekStart, 'yyyy-MM-dd');
       const rawCoachData = await db.analytics.getCoachAnalytics(weekStartStr);
-      console.log('[Analytics] Coach analytics fetched for week:', weekStartStr);
 
-      console.log('[Analytics] Fetching admin controls data...');
       const [maxUsers, totalUsers] = await Promise.all([
         db.admin.getMaxAllowedUsers(),
         db.admin.getTotalActiveUsers(),
       ]);
       setMaxAllowedUsers(maxUsers);
       setTotalActiveUsers(totalUsers);
-      console.log('[Analytics] Admin controls data fetched');
 
       // Use the same getWeeklyStats utility as the dashboard for consistency
       const coachData = await Promise.all(
@@ -211,9 +199,7 @@ export default function AnalyticsScreen() {
         })
       );
 
-      console.log('[Analytics] Coach data processed using getWeeklyStats utility:', coachData[0]);
 
-      console.log('[Analytics] All data fetched successfully');
 
       // Update cache with 5-minute TTL
       setCached(
@@ -307,7 +293,7 @@ export default function AnalyticsScreen() {
       await loadAnalytics(true); // Force refresh to clear cache
     } catch (err) {
       console.error('Error updating user macros:', err);
-      alert('Failed to update macros');
+      toast.error('Failed to update macros');
     } finally {
       setUpdatingMacros(null);
     }
@@ -335,7 +321,7 @@ export default function AnalyticsScreen() {
       await loadAnalytics(true); // Force refresh to clear cache
     } catch (err) {
       console.error('Error updating reminder:', err);
-      alert('Failed to update reminder');
+      toast.error('Failed to update reminder');
     } finally {
       setUpdatingReminder(null);
     }
@@ -377,7 +363,7 @@ export default function AnalyticsScreen() {
 
     // Don't allow navigating to future weeks
     if (direction > 0) {
-      const currentWeekStart = getWeekStart(new Date(getTodayDate()));
+      const currentWeekStart = getWeekStart(getTodayDate());
       if (format(newWeekStart, 'yyyy-MM-dd') > format(currentWeekStart, 'yyyy-MM-dd')) {
         return;
       }
@@ -391,11 +377,11 @@ export default function AnalyticsScreen() {
   const goToCurrentWeek = () => {
     // Clear expanded rows cache when changing weeks
     setExpandedRowsData(new Map());
-    setWeekStart(getWeekStart(new Date(getTodayDate())));
+    setWeekStart(getWeekStart(getTodayDate()));
   };
 
   const isCurrentWeek = () => {
-    const currentWeekStart = getWeekStart(new Date(getTodayDate()));
+    const currentWeekStart = getWeekStart(getTodayDate());
     return format(weekStart, 'yyyy-MM-dd') === format(currentWeekStart, 'yyyy-MM-dd');
   };
 
@@ -425,11 +411,9 @@ export default function AnalyticsScreen() {
       const startDate = format(weekStart, 'yyyy-MM-dd');
       const endDate = format(weekEnd, 'yyyy-MM-dd');
 
-      console.log('[Analytics] Loading weekly entries for user:', userId, 'from', startDate, 'to', endDate);
 
       // Use admin function to fetch entries for any user
       const userEntries = await db.analytics.getUserFoodEntries(userId, startDate, endDate);
-      console.log('[Analytics] Fetched entries count:', userEntries.length, 'for user:', userId);
       const groupedByDate: Record<string, FoodEntry[]> = {};
 
       // Initialize all 7 days with empty arrays
@@ -447,8 +431,11 @@ export default function AnalyticsScreen() {
         groupedByDate[entry.entry_date].push(entry);
       });
 
-      console.log('[Analytics] Loaded entries for user:', userId, 'total entries:', userEntries.length);
-      console.log('[Analytics] Grouped data:', groupedByDate);
+      // Sort each day's entries chronologically so timestamps and meal gaps read in order
+      Object.values(groupedByDate).forEach(dayEntries => {
+        dayEntries.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+      });
+
 
       // Update cache
       setExpandedRowsData(prev => new Map(prev).set(userId, groupedByDate));
@@ -524,7 +511,7 @@ export default function AnalyticsScreen() {
       setCoachingAnalysisData(prev => new Map(prev).set(userId, analysis));
     } catch (err: any) {
       console.error('[Analytics] Error loading coaching analysis:', err);
-      alert(err.message || 'Failed to load coaching analysis');
+      toast.error('Failed to load coaching analysis');
     } finally {
       setLoadingCoaching(prev => {
         const newSet = new Set(prev);
@@ -548,6 +535,22 @@ export default function AnalyticsScreen() {
       hour: 'numeric',
       minute: '2-digit',
     });
+  };
+
+  const formatLogTime = (dateString: string) => {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return '';
+    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  };
+
+  // Gap between two consecutive logs, e.g. "3h 15m"; null if under a minute or invalid
+  const formatLogGap = (prevCreatedAt: string, currCreatedAt: string): string | null => {
+    const diffMs = new Date(currCreatedAt).getTime() - new Date(prevCreatedAt).getTime();
+    if (!isFinite(diffMs) || diffMs < 60 * 1000) return null;
+    const totalMins = Math.round(diffMs / (60 * 1000));
+    const hours = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
   };
 
   const getTierColor = (tier: string) => {
@@ -1611,21 +1614,41 @@ export default function AnalyticsScreen() {
                                               <div className="space-y-1.5 max-h-48 overflow-y-auto">
                                                 {viewMode === 'table' ? (
                                                   // Table view - compact with macros
-                                                  entries.map((entry) => (
-                                                    <div key={entry.id} className="text-xs">
-                                                      <div className="font-medium text-gray-700">{entry.name}</div>
-                                                      <div className="text-gray-500">
-                                                        {entry.calories}c • {entry.protein.toFixed(0)}p
-                                                      </div>
-                                                    </div>
-                                                  ))
+                                                  entries.map((entry, entryIdx) => {
+                                                    const gap = entryIdx > 0 ? formatLogGap(entries[entryIdx - 1].created_at, entry.created_at) : null;
+                                                    return (
+                                                      <React.Fragment key={entry.id}>
+                                                        {gap && (
+                                                          <div className="text-[10px] text-gray-400 italic">↓ {gap}</div>
+                                                        )}
+                                                        <div className="text-xs">
+                                                          <div className="flex items-baseline justify-between gap-2">
+                                                            <div className="font-medium text-gray-700">{entry.name}</div>
+                                                            <div className="text-[10px] text-gray-400 flex-shrink-0">{formatLogTime(entry.created_at)}</div>
+                                                          </div>
+                                                          <div className="text-gray-500">
+                                                            {entry.calories}c • {entry.protein.toFixed(0)}p
+                                                          </div>
+                                                        </div>
+                                                      </React.Fragment>
+                                                    );
+                                                  })
                                                 ) : (
                                                   // Log view - shows original user input
-                                                  entries.map((entry) => (
-                                                    <div key={entry.id} className="text-xs text-gray-700">
-                                                      {entry.description || entry.name} <span className="text-gray-500">({entry.calories}c, {entry.protein.toFixed(0)}p)</span>
-                                                    </div>
-                                                  ))
+                                                  entries.map((entry, entryIdx) => {
+                                                    const gap = entryIdx > 0 ? formatLogGap(entries[entryIdx - 1].created_at, entry.created_at) : null;
+                                                    return (
+                                                      <React.Fragment key={entry.id}>
+                                                        {gap && (
+                                                          <div className="text-[10px] text-gray-400 italic">↓ {gap}</div>
+                                                        )}
+                                                        <div className="text-xs text-gray-700">
+                                                          <span className="text-gray-400">{formatLogTime(entry.created_at)}</span>{' '}
+                                                          {entry.description || entry.name} <span className="text-gray-500">({entry.calories}c, {entry.protein.toFixed(0)}p)</span>
+                                                        </div>
+                                                      </React.Fragment>
+                                                    );
+                                                  })
                                                 )}
                                               </div>
                                             </div>
