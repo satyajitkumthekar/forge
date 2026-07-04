@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect, useRouter } from 'expo-router';
 import { db, type FoodItemInput } from '@/lib/database';
 import { getCached, setCached, invalidate, CACHE_KEYS } from '@/lib/enhanced-cache';
+import { cache as rawCache } from '@/lib/cache';
 import { toast } from '@/lib/toast';
 import { queueOperation, processQueue, checkOnlineStatus } from '@/utils/offline-queue';
 import { getFrequentItems } from '@/utils/frequent-items';
@@ -14,6 +15,9 @@ import ChatInput from '@/components/ChatInput';
 import MacroTable from '@/components/MacroTable';
 import Totals from '@/components/Totals';
 import FrequentItems from '@/components/FrequentItems';
+import CalendarSheet from '@/components/CalendarSheet';
+import FeatureAnnouncement from '@/components/FeatureAnnouncement';
+import { useAuth } from '@/contexts/AuthContext';
 import { appToday, todayLocal, addDaysYMD, maxNavigableDate, formatDisplayDate, parseYMD } from '@/utils/date';
 import { tokens } from '@/lib/design-tokens';
 import Card from '@/components/ui/Card';
@@ -23,7 +27,14 @@ import type { FoodEntry, UserSettings, FrequentItem, Meal } from '@/types';
 // Note: CACHE_KEYS now imported from enhanced-cache for consistency
 
 export default function TrackScreen() {
+  const { signOut } = useAuth();
+  const router = useRouter();
   const [currentDate, setCurrentDate] = useState(appToday());
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [announceOpen, setAnnounceOpen] = useState(false);
+  // One-time My Meals announcement: check once per session, after the first
+  // successful load so it never fights the skeletons
+  const announceCheckedRef = React.useRef(false);
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [settings, setSettings] = useState<UserSettings>({
     id: '',
@@ -70,6 +81,25 @@ export default function TrackScreen() {
 
     return () => clearTimeout(timer);
   }, []);
+
+  // Show the My Meals announcement once per user, after the first load.
+  // The flag is stored OUTSIDE the ft:-prefixed cache namespace on purpose:
+  // sign-out wipes that namespace, and the popup must never replay.
+  useEffect(() => {
+    if (loading || announceCheckedRef.current) return;
+    if (!settings.user_id) return; // wait for real settings (has the user id)
+    announceCheckedRef.current = true;
+    if (!rawCache.get<boolean>(`announce:meals:${settings.user_id}`)) {
+      setAnnounceOpen(true);
+    }
+  }, [loading, settings.user_id]);
+
+  const dismissAnnouncement = () => {
+    if (settings.user_id) {
+      rawCache.set(`announce:meals:${settings.user_id}`, true);
+    }
+    setAnnounceOpen(false);
+  };
 
   // Load frequent items (and saved meals for meal chips) when data changes
   useEffect(() => {
@@ -513,9 +543,8 @@ export default function TrackScreen() {
 
   return (
     <div
-      className="flex flex-col relative"
+      className="h-full flex flex-col relative"
       style={{
-        minHeight: 'calc(100dvh - var(--safe-top))',
         WebkitOverflowScrolling: 'touch',
         background: backgroundGradient
       }}
@@ -541,13 +570,28 @@ export default function TrackScreen() {
       <div className="bg-paper-raised/80 backdrop-blur-md border-b border-line/70 px-4 md:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-2">
-            <h1 className="text-base md:text-lg font-semibold tracking-tight text-ink">Food Tracker</h1>
-            <Link href="/settings" className="p-2.5 hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150">
-              <svg className="w-5 h-5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
-            </Link>
+            <h1 className="text-base md:text-lg font-semibold tracking-tight text-ink">Superhuman Lab</h1>
+            <div className="flex items-center gap-1">
+              <Link
+                href="/settings"
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150"
+                aria-label="Settings"
+              >
+                <svg className="w-5 h-5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+              </Link>
+              <button
+                onClick={() => signOut()}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150"
+                aria-label="Sign out"
+              >
+                <svg className="w-5 h-5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           {/* Date Navigation */}
@@ -583,6 +627,15 @@ export default function TrackScreen() {
                   Today
                 </button>
               )}
+              <button
+                onClick={() => setCalendarOpen(true)}
+                className="min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150"
+                aria-label="Open calendar"
+              >
+                <svg className="w-4 h-4 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
             </div>
 
             <button
@@ -626,11 +679,8 @@ export default function TrackScreen() {
 
       {/* Scrollable Content */}
       <div
-        className="flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 pt-3 bg-transparent"
-        style={{
-          paddingBottom: 'calc(200px + env(safe-area-inset-bottom, 0px))',
-          WebkitOverflowScrolling: 'touch'
-        }}
+        className="flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 pt-3 pb-6 bg-transparent"
+        style={{ WebkitOverflowScrolling: 'touch' }}
       >
         <div className="max-w-7xl mx-auto space-y-6">
           {/* Entries */}
@@ -654,8 +704,29 @@ export default function TrackScreen() {
         </div>
       </div>
 
-      {/* Chat Input (Fixed Bottom) */}
+      {/* Chat Input (in-flow footer above the tab bar) */}
       <ChatInput onFoodLogged={handleFoodLogged} />
+
+      {/* Calendar bottom sheet */}
+      <FeatureAnnouncement
+        open={announceOpen}
+        onExplore={() => {
+          dismissAnnouncement();
+          router.push('/meals');
+        }}
+        onDismiss={dismissAnnouncement}
+      />
+
+      <CalendarSheet
+        open={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        settings={settings}
+        viewedDate={currentDate}
+        onSelectDate={(d) => {
+          setCurrentDate(d);
+          setCalendarOpen(false);
+        }}
+      />
     </div>
   );
 }

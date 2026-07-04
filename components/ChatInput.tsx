@@ -111,13 +111,9 @@ export default function ChatInput({ onFoodLogged }: ChatInputProps) {
   };
 
   return (
-    <div
-      className="fixed left-0 right-0 bg-paper-raised/70 backdrop-blur-sm border-t border-line z-50"
-      style={{
-        bottom: 'calc(65px + env(safe-area-inset-bottom, 0px))',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)'
-      }}
-    >
+    // In-flow footer: the parent screen's flex column pins it above the tab
+    // bar, so no fixed positioning or tab-bar-height guesses are needed
+    <div className="bg-paper-raised/70 backdrop-blur-sm border-t border-line">
       <div className="max-w-7xl mx-auto px-3 py-3">
         {/* Error Message */}
         {error && (

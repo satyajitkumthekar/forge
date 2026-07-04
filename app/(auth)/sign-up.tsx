@@ -80,7 +80,7 @@ export default function SignUpScreen() {
         {/* Logo / Title */}
         <div className="flex flex-col items-center mb-8">
           <div className="w-16 h-16 bg-ink rounded-card flex items-center justify-center mb-4">
-            <span className="text-white text-2xl font-bold tracking-tight">FT</span>
+            <span className="text-white text-2xl font-bold tracking-tight">SL</span>
           </div>
           <h1 className="text-2xl font-semibold tracking-tight text-ink">Create Account</h1>
           <p className="text-sm text-ink-muted mt-2">Start tracking your nutrition with AI</p>

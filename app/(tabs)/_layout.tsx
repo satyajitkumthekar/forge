@@ -1,13 +1,12 @@
 /**
  * Tabs Layout - Main App Navigation
+ * Native headers are disabled; each visible screen renders its own frosted
+ * in-page header (settings/sign-out live there, not in headerRight).
  */
 
 import React, { useEffect, useState } from 'react';
-import FontAwesome from '@expo/vector-icons/FontAwesome';
-import { Tabs, useRouter } from 'expo-router';
-import { Pressable, View } from 'react-native';
+import { Tabs } from 'expo-router';
 import { tokens } from '@/lib/design-tokens';
-import { useAuth } from '../../contexts/AuthContext';
 import { db } from '@/lib/database';
 import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import Svg, { Path } from 'react-native-svg';
@@ -54,8 +53,6 @@ const AnalyticsIcon = ({ color }: { color: string }) => (
 );
 
 export default function TabLayout() {
-  const router = useRouter();
-  const { signOut } = useAuth();
   const [isAdmin, setIsAdmin] = useState(
     () => getCached<string>(CACHE_KEYS.accountType) === 'admin'
   );
@@ -75,49 +72,16 @@ export default function TabLayout() {
     checkAdminStatus();
   }, []);
 
-  const handleSettings = () => {
-    router.push('/settings');
-  };
-
-  const handleSignOut = async () => {
-    await signOut();
-  };
-
-  const getHeaderRight = () => (
-    <View style={{ flexDirection: 'row', gap: 8, marginRight: 12 }}>
-      <Pressable
-        onPress={handleSettings}
-        style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 1 })}
-      >
-        <FontAwesome name="cog" size={20} color={tokens.colors.ink.DEFAULT} />
-      </Pressable>
-      <Pressable
-        onPress={handleSignOut}
-        style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 1 })}
-      >
-        <FontAwesome name="sign-out" size={20} color={tokens.colors.ink.DEFAULT} />
-      </Pressable>
-    </View>
-  );
-
   return (
     <Tabs
       screenOptions={{
+        headerShown: false,
         tabBarActiveTintColor: tokens.colors.ink.DEFAULT,
         tabBarInactiveTintColor: tokens.colors.ink.muted,
         tabBarStyle: {
           backgroundColor: tokens.colors.paper.raised,
           borderTopWidth: 1,
           borderTopColor: tokens.colors.line.DEFAULT,
-        },
-        headerStyle: {
-          backgroundColor: tokens.colors.paper.raised,
-          borderBottomWidth: 1,
-          borderBottomColor: tokens.colors.line.DEFAULT,
-        },
-        headerTitleStyle: {
-          fontWeight: 'bold',
-          color: tokens.colors.ink.DEFAULT,
         },
       }}
     >
@@ -133,7 +97,7 @@ export default function TabLayout() {
         options={{
           title: 'Dashboard',
           tabBarIcon: ({ color }) => <DashboardIcon color={color} />,
-          headerRight: getHeaderRight,
+          href: null, // Hidden — replaced by the Track calendar; screen kept because utils are shared with admin
         }}
       />
       <Tabs.Screen
@@ -141,7 +105,6 @@ export default function TabLayout() {
         options={{
           title: 'Meals',
           tabBarIcon: ({ color }) => <MealsIcon color={color} />,
-          headerRight: getHeaderRight,
         }}
       />
       <Tabs.Screen
@@ -149,7 +112,6 @@ export default function TabLayout() {
         options={{
           title: 'Coach',
           tabBarIcon: ({ color }) => <CoachIcon color={color} />,
-          headerRight: getHeaderRight,
           href: null, // Hidden for all users
         }}
       />
@@ -158,7 +120,6 @@ export default function TabLayout() {
         options={{
           title: 'Feedback',
           tabBarIcon: ({ color }) => <FeedbackIcon color={color} />,
-          headerRight: getHeaderRight,
           href: null, // Hidden for all users
         }}
       />
@@ -168,7 +129,6 @@ export default function TabLayout() {
         options={{
           title: 'Admin',
           tabBarIcon: ({ color }) => <AnalyticsIcon color={color} />,
-          headerRight: getHeaderRight,
           href: isAdmin ? undefined : null,
         }}
       />

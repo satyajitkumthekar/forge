@@ -217,6 +217,7 @@ export function getCacheStats() {
 // duplicate in lib/cache.ts)
 export const CACHE_KEYS = {
   entries: (date: string) => `entries_${date}`,
+  calendarMonth: (month: string) => `calendar_${month}`,
   settings: 'user_settings',
   analytics: 'analytics_data',
   chatMessages: 'coach_messages',
