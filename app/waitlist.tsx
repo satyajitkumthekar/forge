@@ -51,7 +51,7 @@ export default function WaitlistScreen() {
       <div className="min-h-screen bg-paper flex items-center justify-center px-6">
         <div className="w-full max-w-sm bg-paper-raised rounded-card border border-line shadow-card p-6 text-center">
           <div className="text-4xl mb-4">🚀</div>
-          <h1 className="text-xl font-bold tracking-tight text-ink mb-2">You&apos;re on the list!</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-ink mb-2">You&apos;re on the list!</h1>
           <p className="text-sm text-ink-muted mb-6">
             We couldn&apos;t load your position right now. Check your connection and try again.
           </p>
@@ -68,7 +68,7 @@ export default function WaitlistScreen() {
       <div className="w-full max-w-md text-center animate-fade-in">
         <div className="text-5xl mb-6">🚀</div>
 
-        <h1 className="text-3xl font-bold tracking-tight text-ink mb-6">You&apos;re on the list!</h1>
+        <h1 className="text-3xl font-semibold tracking-tight text-ink mb-6">You&apos;re on the list!</h1>
 
         {/* Position card */}
         <div className="bg-paper-raised rounded-card border border-line shadow-card px-8 py-6 mb-8 inline-block">

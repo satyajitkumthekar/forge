@@ -129,7 +129,7 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
         </div>
         <div>
           <div className="text-xs text-ink-muted font-medium">Calories</div>
-          <div className="text-sm font-bold text-ink tabular-nums">{Math.round(totals.calories)}</div>
+          <div className="text-lg font-semibold tracking-tight tabular-nums leading-tight text-ink">{Math.round(totals.calories)}</div>
           <div className="text-xs text-ink-muted tabular-nums">of {targetCalories}</div>
         </div>
       </div>
@@ -167,7 +167,7 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
         </div>
         <div>
           <div className="text-xs text-ink-muted font-medium">Protein</div>
-          <div className="text-sm font-bold text-ink tabular-nums">{Math.round(totals.protein * 10) / 10}g</div>
+          <div className="text-lg font-semibold tracking-tight tabular-nums leading-tight text-ink">{Math.round(totals.protein * 10) / 10}g</div>
           <div className="text-xs text-ink-muted tabular-nums">of {targetProtein}g</div>
         </div>
       </div>

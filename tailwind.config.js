@@ -1,4 +1,4 @@
-const { colors, radii, shadows } = require('./lib/tokens');
+const { colors, radii, shadows, fonts } = require('./lib/tokens');
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
@@ -9,6 +9,9 @@ module.exports = {
   theme: {
     extend: {
       colors,
+      fontFamily: {
+        sans: fonts.sans,
+      },
       borderRadius: {
         card: radii.card,
         ctrl: radii.ctrl,

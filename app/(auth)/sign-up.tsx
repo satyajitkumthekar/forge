@@ -62,7 +62,7 @@ export default function SignUpScreen() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
             </svg>
           </div>
-          <h1 className="text-xl font-bold tracking-tight text-ink mb-2">Check Your Email</h1>
+          <h1 className="text-xl font-semibold tracking-tight text-ink mb-2">Check Your Email</h1>
           <p className="text-sm text-ink-muted mb-6">
             We&apos;ve sent you a confirmation link. Please check your email to verify your account.
           </p>
@@ -82,7 +82,7 @@ export default function SignUpScreen() {
           <div className="w-16 h-16 bg-ink rounded-card flex items-center justify-center mb-4">
             <span className="text-white text-2xl font-bold tracking-tight">FT</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink">Create Account</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">Create Account</h1>
           <p className="text-sm text-ink-muted mt-2">Start tracking your nutrition with AI</p>
         </div>
 

@@ -61,7 +61,7 @@ export default function SignInScreen() {
           <div className="w-16 h-16 bg-ink rounded-card flex items-center justify-center mb-4">
             <span className="text-white text-2xl font-bold tracking-tight">FT</span>
           </div>
-          <h1 className="text-2xl font-bold tracking-tight text-ink">Food Tracker</h1>
+          <h1 className="text-2xl font-semibold tracking-tight text-ink">Food Tracker</h1>
           <p className="text-sm text-ink-muted mt-2">Track your nutrition with AI</p>
         </div>
 

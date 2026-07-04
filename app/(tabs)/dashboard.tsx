@@ -217,7 +217,7 @@ export default function DashboardScreen() {
             </button>
 
             <div className="text-center">
-              <h2 className="text-base font-bold text-ink">
+              <h2 className="text-base font-semibold tracking-tight text-ink">
                 {formatWeekRange(weekStart)}
               </h2>
               <div className="mt-1 text-xs text-ink-muted">
@@ -278,14 +278,14 @@ export default function DashboardScreen() {
               {/* Average Daily Calories */}
               <div className="bg-paper-raised rounded-card border border-line p-4 shadow-card hover:border-line-strong transition-all">
                 <p className="text-xs font-semibold text-ink-muted mb-1">Avg Calories</p>
-                <p className="text-2xl font-bold text-ink">{stats.averages.calories}</p>
+                <p className="text-[28px] font-bold tracking-tight tabular-nums leading-tight text-ink">{stats.averages.calories}</p>
                 <p className="text-xs text-ink-muted mt-0.5">per day</p>
               </div>
 
               {/* Average Daily Protein */}
               <div className="bg-paper-raised rounded-card border border-line p-4 shadow-card hover:border-line-strong transition-all">
                 <p className="text-xs font-semibold text-ink-muted mb-1">Avg Protein</p>
-                <p className="text-2xl font-bold text-ink">{stats.averages.protein}g</p>
+                <p className="text-[28px] font-bold tracking-tight tabular-nums leading-tight text-ink">{stats.averages.protein}g</p>
                 <p className="text-xs text-ink-muted mt-0.5">per day</p>
               </div>
 
