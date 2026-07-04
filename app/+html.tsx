@@ -1,4 +1,9 @@
-import { ScrollViewStyleReset } from 'expo-router/html';
+// Note: we deliberately do NOT use expo-router's ScrollViewStyleReset.
+// It pins html/body/#root to `height: 100%`, which resolves against the
+// viewport as measured at first layout — during PWA launch that measurement
+// is short (status bar/insets still settling), leaving the tab bar floating
+// above the bottom until a navigation forces re-layout. `100dvh` tracks the
+// live viewport natively. viewportFrame below replicates the rest of the reset.
 
 // This file is web-only and used to configure the root HTML for every
 // web page during static rendering.
@@ -30,11 +35,8 @@ export default function Root({ children }: { children: React.ReactNode }) {
         {/* Android PWA Support */}
         <meta name="mobile-web-app-capable" content="yes" />
 
-        {/*
-          Disable body scrolling on web. This makes ScrollView components work closer to how they do on native.
-          However, body scrolling is often nice to have for mobile web. If you want to enable it, remove this line.
-        */}
-        <ScrollViewStyleReset />
+        {/* Viewport frame + body-scroll disable (replaces ScrollViewStyleReset — see note at top) */}
+        <style dangerouslySetInnerHTML={{ __html: viewportFrame }} />
 
         {/* Using raw CSS styles as an escape-hatch to ensure the background color never flickers in dark-mode. */}
         <style dangerouslySetInnerHTML={{ __html: responsiveBackground }} />
@@ -50,4 +52,23 @@ export default function Root({ children }: { children: React.ReactNode }) {
 const responsiveBackground = `
 body {
   background-color: #FAF9F6;
+}`;
+
+// The app frame. 100dvh = dynamic viewport height: the browser keeps it in
+// sync as UI chrome/insets settle, so the tab bar can never be stranded by a
+// stale first-layout measurement. 100% fallback for pre-dvh browsers.
+const viewportFrame = `
+html, body, #root {
+  height: 100%;
+}
+@supports (height: 100dvh) {
+  html, body, #root {
+    height: 100dvh;
+  }
+}
+body {
+  overflow: hidden;
+}
+#root {
+  display: flex;
 }`;
