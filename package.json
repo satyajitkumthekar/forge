@@ -11,13 +11,6 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
-    "@gluestack-style/react": "^1.0.57",
-    "@gluestack-ui/config": "^1.1.20",
-    "@gluestack-ui/themed": "^1.1.73",
-    "@react-native-aria/dialog": "^0.0.5",
-    "@react-native-aria/focus": "^0.2.9",
-    "@react-native-aria/interactions": "^0.2.16",
-    "@react-native-aria/overlays": "^0.3.15",
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/native": "^7.1.8",
     "@supabase/supabase-js": "^2.75.0",

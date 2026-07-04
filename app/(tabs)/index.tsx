@@ -11,10 +11,12 @@ import { queueOperation, processQueue, checkOnlineStatus } from '@/utils/offline
 import { getFrequentItems } from '@/utils/frequent-items';
 import ChatInput from '@/components/ChatInput';
 import MacroTable from '@/components/MacroTable';
-import FoodLogView from '@/components/FoodLogView';
 import Totals from '@/components/Totals';
 import FrequentItems from '@/components/FrequentItems';
 import { appToday, todayLocal, addDaysYMD, maxNavigableDate, formatDisplayDate, parseYMD } from '@/utils/date';
+import { tokens } from '@/lib/design-tokens';
+import Card from '@/components/ui/Card';
+import { SkeletonRow, SkeletonDonut } from '@/components/ui/Skeleton';
 import type { FoodEntry, UserSettings, FrequentItem } from '@/types';
 
 // Note: CACHE_KEYS now imported from enhanced-cache for consistency
@@ -35,7 +37,6 @@ export default function TrackScreen() {
   const [error, setError] = useState('');
   const [frequentItems, setFrequentItems] = useState<FrequentItem[]>([]);
   const [dataVersion, setDataVersion] = useState(0);
-  const [viewMode, setViewMode] = useState<'table' | 'log'>('table');
   // Coach reminder loaded for future use
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [coachReminder, setCoachReminder] = useState<string | null>(null);
@@ -318,7 +319,7 @@ export default function TrackScreen() {
       { calories: 0 }
     );
 
-    if (totals.calories === 0 || settings.target_calories === 0) return '#9CA3AF'; // gray-400
+    if (totals.calories === 0 || settings.target_calories === 0) return tokens.colors.ink.faint;
 
     const isDeficit = settings.target_calories < settings.maintenance_calories;
     const isSurplus = settings.target_calories > settings.maintenance_calories;
@@ -330,39 +331,39 @@ export default function TrackScreen() {
 
     if (isAligned) {
       const absDiff = Math.abs(percentDiff);
-      if (absDiff <= 10) return '#10A37F';  // green
-      if (absDiff <= 20) return '#F59E0B';  // yellow
-      if (absDiff <= 30) return '#F97316';  // orange
-      return '#EF4444';                     // red
+      if (absDiff <= 10) return tokens.colors.accent[500];   // on target
+      if (absDiff <= 20) return tokens.colors.warn.DEFAULT;  // 10-20%
+      if (absDiff <= 30) return tokens.colors.alert.DEFAULT; // 20-30%
+      return tokens.colors.danger.DEFAULT;                   // >30%
     } else {
       const absDiff = Math.abs(percentDiff);
-      if (absDiff <= 5) return '#10A37F';
-      return '#EF4444';
+      if (absDiff <= 5) return tokens.colors.accent[500];
+      return tokens.colors.danger.DEFAULT;
     }
   };
 
   const calorieColor = getCalorieColor();
 
-  // Premium gradient: Rich color at top that quickly fades to white
+  // Premium gradient: status color at top, softened, fading into eggshell paper
   const getPastelGradient = (color: string) => {
-    // Green progress - Rich emerald at top, quick fade to white
-    if (color === '#10A37F') {
-      return 'linear-gradient(to bottom, #10A37F 0%, #6ee7b7 10%, #d1fae5 20%, #ecfdf5 35%, #ffffff 100%)';
+    // On-target green
+    if (color === tokens.colors.accent[500]) {
+      return 'linear-gradient(to bottom, rgba(16, 163, 127, 0.85) 0%, rgba(110, 231, 183, 0.5) 10%, rgba(209, 250, 229, 0.6) 20%, rgba(236, 253, 245, 0.7) 35%, #FAF9F6 100%)';
     }
-    // Yellow progress - Rich amber at top, quick fade to white
-    if (color === '#F59E0B') {
-      return 'linear-gradient(to bottom, #F59E0B 0%, #fcd34d 10%, #fef3c7 20%, #fef9c3 35%, #ffffff 100%)';
+    // 10-20% off (amber)
+    if (color === tokens.colors.warn.DEFAULT) {
+      return 'linear-gradient(to bottom, rgba(217, 119, 6, 0.75) 0%, rgba(252, 211, 77, 0.5) 10%, rgba(254, 243, 199, 0.6) 20%, rgba(254, 249, 195, 0.7) 35%, #FAF9F6 100%)';
     }
-    // Orange progress - Rich orange at top, quick fade to white
-    if (color === '#F97316') {
-      return 'linear-gradient(to bottom, #F97316 0%, #fdba74 10%, #ffedd5 20%, #fff7ed 35%, #ffffff 100%)';
+    // 20-30% off (orange)
+    if (color === tokens.colors.alert.DEFAULT) {
+      return 'linear-gradient(to bottom, rgba(234, 88, 12, 0.75) 0%, rgba(253, 186, 116, 0.5) 10%, rgba(255, 237, 213, 0.6) 20%, rgba(255, 247, 237, 0.7) 35%, #FAF9F6 100%)';
     }
-    // Red progress - Rich red at top, quick fade to white
-    if (color === '#EF4444') {
-      return 'linear-gradient(to bottom, #EF4444 0%, #f87171 10%, #fecaca 20%, #fee2e2 35%, #ffffff 100%)';
+    // >30% off (red)
+    if (color === tokens.colors.danger.DEFAULT) {
+      return 'linear-gradient(to bottom, rgba(220, 38, 38, 0.75) 0%, rgba(248, 113, 113, 0.5) 10%, rgba(254, 202, 202, 0.6) 20%, rgba(254, 226, 226, 0.7) 35%, #FAF9F6 100%)';
     }
-    // Gray (no entries) - Gray at top, quick fade to white
-    return 'linear-gradient(to bottom, #9CA3AF 0%, #d1d5db 10%, #f3f4f6 20%, #f9fafb 35%, #ffffff 100%)';
+    // No entries — warm neutral ramp
+    return 'linear-gradient(to bottom, rgba(180, 174, 162, 0.55) 0%, rgba(216, 210, 198, 0.5) 10%, rgba(237, 233, 224, 0.7) 20%, rgba(244, 241, 234, 0.85) 35%, #FAF9F6 100%)';
   };
 
   const backgroundGradient = getPastelGradient(calorieColor);
@@ -383,12 +384,12 @@ export default function TrackScreen() {
       {/* Error Message */}
       {error && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 max-w-lg w-11/12">
-          <div className="bg-white border border-red-200 rounded-lg p-3 shadow-md flex items-center gap-2">
-            <svg className="w-4 h-4 text-red-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-paper-raised border border-danger/25 rounded-ctrl p-3 shadow-overlay flex items-center gap-2 animate-toast-in">
+            <svg className="w-4 h-4 text-danger flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span className="text-red-800 text-sm flex-1">{error}</span>
-            <button onClick={() => setError('')} className="text-gray-400 hover:text-gray-600">
+            <span className="text-ink text-sm flex-1">{error}</span>
+            <button onClick={() => setError('')} className="p-1 text-ink-faint hover:text-ink-muted active:text-ink-soft">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -398,12 +399,12 @@ export default function TrackScreen() {
       )}
 
       {/* Header with Settings */}
-      <div className="bg-white/70 backdrop-blur-sm border-b border-gray-200 px-4 md:px-6 lg:px-8 py-3">
+      <div className="bg-paper-raised/70 backdrop-blur-sm border-b border-line px-4 md:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-2">
-            <h1 className="text-base md:text-lg font-bold text-gray-900">Food Tracker</h1>
-            <Link href="/settings" className="p-2 hover:bg-gray-100 rounded-lg transition-all">
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <h1 className="text-base md:text-lg font-bold tracking-tight text-ink">Food Tracker</h1>
+            <Link href="/settings" className="p-2.5 hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150">
+              <svg className="w-5 h-5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
@@ -414,19 +415,20 @@ export default function TrackScreen() {
           <div className="flex items-center justify-between">
             <button
               onClick={() => navigateDate(-1)}
-              className="p-2 hover:bg-gray-100 rounded-lg transition-all"
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150"
+              aria-label="Previous day"
             >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
 
             <div className="flex items-center gap-2">
               <div className="text-center">
-                <div className="text-sm md:text-base font-bold text-gray-900">
+                <div className="text-sm md:text-base font-bold tracking-tight text-ink">
                   {formatDisplayDate(currentDate)}
                 </div>
-                <div className="text-xs text-gray-500 mt-0.5">
+                <div className="text-xs text-ink-muted mt-0.5">
                   {parseYMD(currentDate).toLocaleDateString('en-US', {
                     month: 'short',
                     day: 'numeric',
@@ -437,7 +439,7 @@ export default function TrackScreen() {
               {!isOnToday && (
                 <button
                   onClick={goToToday}
-                  className="px-3 py-1 bg-black text-white text-xs font-medium rounded-lg hover:bg-gray-800 transition-all"
+                  className="px-3 py-1.5 bg-ink text-white text-xs font-medium rounded-ctrl hover:bg-ink-soft transition duration-150 ease-out active:scale-[0.98]"
                 >
                   Today
                 </button>
@@ -447,13 +449,14 @@ export default function TrackScreen() {
             <button
               onClick={() => navigateDate(1)}
               disabled={isAtMaxDate}
-              className={`p-2 rounded-lg transition-all ${
+              className={`min-w-[44px] min-h-[44px] flex items-center justify-center rounded-ctrl transition duration-150 ${
                 isAtMaxDate
                   ? 'opacity-30 cursor-not-allowed'
-                  : 'hover:bg-gray-100'
+                  : 'hover:bg-paper-inset active:bg-paper-deep'
               }`}
+              aria-label="Next day"
             >
-              <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-4 h-4 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
@@ -462,14 +465,21 @@ export default function TrackScreen() {
       </div>
 
       {/* Totals Section */}
-      <div className="bg-white/70 backdrop-blur-sm border-b border-gray-200 px-4 md:px-6 lg:px-8 py-3">
+      <div className="bg-paper-raised/70 backdrop-blur-sm border-b border-line px-4 md:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto">
-          <Totals
-            entries={entries}
-            targetCalories={settings.target_calories}
-            targetProtein={settings.target_protein}
-            maintenanceCalories={settings.maintenance_calories}
-          />
+          {loading ? (
+            <div className="flex items-center justify-center gap-6">
+              <SkeletonDonut size={60} />
+              <SkeletonDonut size={60} />
+            </div>
+          ) : (
+            <Totals
+              entries={entries}
+              targetCalories={settings.target_calories}
+              targetProtein={settings.target_protein}
+              maintenanceCalories={settings.maintenance_calories}
+            />
+          )}
         </div>
       </div>
 
@@ -482,47 +492,15 @@ export default function TrackScreen() {
         }}
       >
         <div className="max-w-7xl mx-auto space-y-6">
-          {/* View Toggle */}
-          <div className="flex gap-2">
-            <button
-              onClick={() => setViewMode('table')}
-              className={`flex-1 py-3 rounded-lg border font-medium text-sm transition-all ${
-                viewMode === 'table'
-                  ? 'bg-black text-white border-black'
-                  : 'bg-white/70 backdrop-blur-sm text-gray-600 border-gray-200 hover:bg-gray-50/70'
-              }`}
-            >
-              Table
-            </button>
-            <button
-              onClick={() => setViewMode('log')}
-              className={`flex-1 py-3 rounded-lg border font-medium text-sm transition-all ${
-                viewMode === 'log'
-                  ? 'bg-black text-white border-black'
-                  : 'bg-white/70 backdrop-blur-sm text-gray-600 border-gray-200 hover:bg-gray-50/70'
-              }`}
-            >
-              Log
-            </button>
-          </div>
-
-          {/* Conditional View Rendering */}
+          {/* Entries */}
           {loading ? (
-            <div className="bg-white/70 backdrop-blur-sm rounded-xl border border-gray-200 p-8 shadow-sm flex items-center justify-center gap-3">
-              <svg className="animate-spin h-5 w-5 text-gray-900" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-              </svg>
-              <span className="text-gray-900 font-medium text-sm">Loading...</span>
-            </div>
-          ) : viewMode === 'table' ? (
-            <MacroTable
-              entries={entries}
-              onDeleteEntry={handleDeleteEntry}
-              onDuplicateEntry={handleDuplicateEntry}
-            />
+            <Card translucent className="divide-y divide-line/60">
+              <SkeletonRow />
+              <SkeletonRow />
+              <SkeletonRow />
+            </Card>
           ) : (
-            <FoodLogView
+            <MacroTable
               entries={entries}
               onDeleteEntry={handleDeleteEntry}
               onDuplicateEntry={handleDuplicateEntry}

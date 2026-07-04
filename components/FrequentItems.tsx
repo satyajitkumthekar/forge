@@ -16,7 +16,7 @@ export default function FrequentItems({ items, onItemClick }: FrequentItemsProps
 
   return (
     <div>
-      <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+      <h3 className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-3">
         Quick Add
       </h3>
       <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide pb-2">
@@ -25,19 +25,19 @@ export default function FrequentItems({ items, onItemClick }: FrequentItemsProps
             <button
               key={index}
               onClick={() => onItemClick(item)}
-              className="flex-shrink-0 flex items-center gap-2 px-3 py-2 bg-white/70 backdrop-blur-sm hover:bg-white/80 border border-gray-200 rounded-lg transition-all group shadow-sm"
+              className="flex-shrink-0 flex items-center gap-2 px-3 py-2 min-h-[44px] bg-paper-raised/70 backdrop-blur-sm hover:bg-paper-raised border border-line rounded-ctrl transition duration-150 ease-out active:scale-[0.98] active:bg-paper-inset group shadow-card"
               title={`${item.name} - Added ${item.count}x recently`}
             >
               <div className="flex flex-col items-start min-w-0">
-                <span className="text-sm font-medium text-gray-900 truncate max-w-[140px]">
+                <span className="text-sm font-medium text-ink truncate max-w-[140px]">
                   {item.name}
                 </span>
-                <span className="text-xs text-gray-500">
+                <span className="text-xs text-ink-muted tabular-nums">
                   {item.calories} cal • {item.protein}g pro
                 </span>
               </div>
               <svg
-                className="w-4 h-4 text-gray-400 group-hover:text-gray-600 flex-shrink-0"
+                className="w-4 h-4 text-ink-faint group-hover:text-ink-soft flex-shrink-0"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"

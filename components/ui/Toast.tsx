@@ -6,9 +6,9 @@ import React from 'react';
 import { useToastStore, ToastType } from '@/lib/toast';
 
 const iconColor: Record<ToastType, string> = {
-  success: 'text-green-600',
-  error: 'text-red-600',
-  info: 'text-gray-600',
+  success: 'text-accent-600',
+  error: 'text-danger',
+  info: 'text-ink-muted',
 };
 
 const iconPath: Record<ToastType, string> = {
@@ -31,16 +31,16 @@ export default function ToastHost() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="bg-white border border-gray-200 rounded-lg p-3 shadow-md flex items-center gap-2"
+          className="bg-paper-raised border border-line rounded-ctrl p-3 shadow-overlay flex items-center gap-2 animate-toast-in"
           role="status"
         >
           <svg className={`w-4 h-4 flex-shrink-0 ${iconColor[t.type]}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={iconPath[t.type]} />
           </svg>
-          <span className="text-gray-900 text-sm flex-1">{t.message}</span>
+          <span className="text-ink text-sm flex-1">{t.message}</span>
           <button
             onClick={() => dismiss(t.id)}
-            className="p-2 -m-1 text-gray-400 hover:text-gray-600 active:text-gray-800"
+            className="p-2 -m-1 text-ink-faint hover:text-ink-muted active:text-ink-soft"
             aria-label="Dismiss"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

@@ -7,6 +7,8 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'expo-router';
 import { db } from '@/lib/database';
 import { toast } from '@/lib/toast';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
 import type { UserSettings, RateLimitStatus } from '@/types';
 
 // Sanity bounds; values outside these are almost certainly typos
@@ -113,23 +115,17 @@ export default function SettingsScreen() {
 
   if (loadError) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50 p-6">
-        <div className="max-w-sm w-full bg-white rounded-xl border border-gray-200 p-6 shadow-sm text-center">
-          <p className="text-sm font-semibold text-gray-900 mb-1">Couldn&apos;t load settings</p>
-          <p className="text-xs text-gray-500 mb-4">Check your connection and try again.</p>
+      <div className="flex items-center justify-center h-screen bg-paper p-6">
+        <div className="max-w-sm w-full bg-paper-raised rounded-card border border-line p-6 shadow-card text-center">
+          <p className="text-sm font-semibold text-ink mb-1">Couldn&apos;t load settings</p>
+          <p className="text-xs text-ink-muted mb-4">Check your connection and try again.</p>
           <div className="flex gap-2">
-            <button
-              onClick={loadData}
-              className="flex-1 min-h-[44px] bg-black hover:bg-gray-800 active:bg-gray-700 text-white px-4 rounded-lg transition-all font-medium text-sm"
-            >
+            <Button className="flex-1" onClick={loadData}>
               Retry
-            </button>
-            <button
-              onClick={() => router.back()}
-              className="flex-1 min-h-[44px] bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-900 px-4 rounded-lg transition-all font-medium text-sm"
-            >
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => router.back()}>
               Back
-            </button>
+            </Button>
           </div>
         </div>
       </div>
@@ -138,8 +134,8 @@ export default function SettingsScreen() {
 
   if (loading || !settings || !rateLimitStatus) {
     return (
-      <div className="flex items-center justify-center h-screen bg-gray-50">
-        <div className="flex items-center gap-2 text-gray-400">
+      <div className="flex items-center justify-center h-screen bg-paper">
+        <div className="flex items-center gap-2 text-ink-faint">
           <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
@@ -157,21 +153,21 @@ export default function SettingsScreen() {
   ];
 
   return (
-    <div className="flex flex-col h-screen bg-gray-50">
+    <div className="flex flex-col h-screen bg-paper">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-4 md:px-6 lg:px-8 py-4">
+      <div className="bg-paper-raised border-b border-line px-4 md:px-6 lg:px-8 py-4">
         <div className="max-w-3xl mx-auto">
           <div className="flex items-center gap-3">
             <button
               onClick={() => router.back()}
-              className="p-2 hover:bg-gray-100 active:bg-gray-200 rounded-lg transition-all"
+              className="p-2 hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150"
               aria-label="Back"
             >
-              <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="w-5 h-5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <h1 className="text-lg font-bold text-gray-900">Settings</h1>
+            <h1 className="text-lg font-bold tracking-tight text-ink">Settings</h1>
           </div>
         </div>
       </div>
@@ -182,50 +178,30 @@ export default function SettingsScreen() {
           {/* Settings Form */}
           <div className="space-y-4">
             {fields.map(({ key, label, unit, hint }) => (
-              <div key={key}>
-                <label className="block text-xs font-medium text-gray-700 mb-1.5">{label}</label>
-                <div className="relative">
-                  <input
-                    type="number"
-                    inputMode="numeric"
-                    value={form[key]}
-                    onChange={(e) => updateField(key, e.target.value)}
-                    disabled={saving}
-                    className={`w-full px-3 py-2.5 border rounded-lg focus:outline-none focus:ring-1 bg-white text-gray-900 font-medium text-sm ${
-                      fieldErrors[key]
-                        ? 'border-red-300 focus:ring-red-400'
-                        : 'border-gray-300 focus:ring-gray-400'
-                    }`}
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-500">
-                    {unit}
-                  </div>
-                </div>
-                {fieldErrors[key] ? (
-                  <p className="mt-1 text-xs text-red-600">{fieldErrors[key]}</p>
-                ) : (
-                  <p className="mt-1 text-xs text-gray-500">{hint}</p>
-                )}
-              </div>
+              <Input
+                key={key}
+                id={key}
+                type="number"
+                inputMode="numeric"
+                label={label}
+                unit={unit}
+                hint={hint}
+                error={fieldErrors[key]}
+                value={form[key]}
+                onChange={(e) => updateField(key, e.target.value)}
+                disabled={saving}
+              />
             ))}
           </div>
 
           {/* Action Buttons */}
           <div className="flex gap-2">
-            <button
-              onClick={handleSave}
-              disabled={saving}
-              className="flex-1 min-h-[44px] bg-black hover:bg-gray-800 active:bg-gray-700 text-white py-2.5 px-4 rounded-lg transition-all font-medium text-sm disabled:bg-gray-300 disabled:cursor-not-allowed"
-            >
+            <Button className="flex-1" onClick={handleSave} disabled={saving}>
               {saved ? '✓ Saved!' : saving ? 'Saving...' : 'Save'}
-            </button>
-            <button
-              onClick={() => router.back()}
-              disabled={saving}
-              className="flex-1 min-h-[44px] bg-gray-200 hover:bg-gray-300 active:bg-gray-400 text-gray-900 py-2.5 px-4 rounded-lg transition-all font-medium text-sm disabled:opacity-50 disabled:cursor-not-allowed"
-            >
+            </Button>
+            <Button variant="secondary" className="flex-1" onClick={() => router.back()} disabled={saving}>
               Cancel
-            </button>
+            </Button>
           </div>
         </div>
       </div>

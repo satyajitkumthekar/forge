@@ -5,8 +5,6 @@ import { Stack, useRouter, useSegments, useRootNavigationState } from 'expo-rout
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect, useState } from 'react';
 import 'react-native-reanimated';
-import { GluestackUIProvider } from '@gluestack-ui/themed';
-import { config } from '../gluestack-ui.config';
 import Head from 'expo-router/head';
 import { Platform } from 'react-native';
 import './global.css';
@@ -59,11 +57,9 @@ export default function RootLayout() {
   }
 
   return (
-    <GluestackUIProvider config={config}>
-      <AuthProvider>
-        <RootLayoutNav />
-      </AuthProvider>
-    </GluestackUIProvider>
+    <AuthProvider>
+      <RootLayoutNav />
+    </AuthProvider>
   );
 }
 

@@ -5,8 +5,8 @@
 import React, { useEffect, useState } from 'react';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { Tabs, useRouter } from 'expo-router';
-import { Pressable } from 'react-native';
-import { HStack } from '@gluestack-ui/themed';
+import { Pressable, View } from 'react-native';
+import { tokens } from '@/lib/design-tokens';
 import { useAuth } from '../../contexts/AuthContext';
 import { db } from '@/lib/database';
 import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
@@ -78,38 +78,40 @@ export default function TabLayout() {
   };
 
   const getHeaderRight = () => (
-    <HStack space="sm" mr="$3">
+    <View style={{ flexDirection: 'row', gap: 8, marginRight: 12 }}>
       <Pressable
         onPress={handleSettings}
         style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 1 })}
       >
-        <FontAwesome name="cog" size={20} color="#000" />
+        <FontAwesome name="cog" size={20} color={tokens.colors.ink.DEFAULT} />
       </Pressable>
       <Pressable
         onPress={handleSignOut}
         style={({ pressed }) => ({ padding: 8, opacity: pressed ? 0.5 : 1 })}
       >
-        <FontAwesome name="sign-out" size={20} color="#000" />
+        <FontAwesome name="sign-out" size={20} color={tokens.colors.ink.DEFAULT} />
       </Pressable>
-    </HStack>
+    </View>
   );
 
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: '#000',
-        tabBarInactiveTintColor: '#666',
+        tabBarActiveTintColor: tokens.colors.ink.DEFAULT,
+        tabBarInactiveTintColor: tokens.colors.ink.muted,
         tabBarStyle: {
+          backgroundColor: tokens.colors.paper.raised,
           borderTopWidth: 1,
-          borderTopColor: '#e5e7eb',
+          borderTopColor: tokens.colors.line.DEFAULT,
         },
         headerStyle: {
-          backgroundColor: '#fff',
+          backgroundColor: tokens.colors.paper.raised,
           borderBottomWidth: 1,
-          borderBottomColor: '#e5e7eb',
+          borderBottomColor: tokens.colors.line.DEFAULT,
         },
         headerTitleStyle: {
           fontWeight: 'bold',
+          color: tokens.colors.ink.DEFAULT,
         },
       }}
     >

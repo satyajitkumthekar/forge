@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import { tokens } from '@/lib/design-tokens';
 import type { FoodEntry } from '@/types';
 
 interface TotalsProps {
@@ -12,6 +13,14 @@ interface TotalsProps {
   targetProtein: number;
   maintenanceCalories?: number;
 }
+
+const STATUS = {
+  none: tokens.colors.ink.faint,
+  good: tokens.colors.accent[500],
+  warn: tokens.colors.warn.DEFAULT,
+  alert: tokens.colors.alert.DEFAULT,
+  danger: tokens.colors.danger.DEFAULT,
+};
 
 export default function Totals({ entries, targetCalories, targetProtein, maintenanceCalories }: TotalsProps) {
   // Calculate totals
@@ -37,15 +46,15 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
   };
 
   const getCalorieColor = () => {
-    if (totals.calories === 0) return '#9CA3AF'; // gray-400
-    if (targetCalories === 0) return '#9CA3AF';
+    if (totals.calories === 0) return STATUS.none;
+    if (targetCalories === 0) return STATUS.none;
 
     // If maintenanceCalories not provided, use simple logic
     if (!maintenanceCalories) {
       const percentOfTarget = (totals.calories / targetCalories) * 100;
-      if (percentOfTarget > 100) return '#EF4444'; // red-500
-      if (percentOfTarget > 90) return '#F59E0B'; // amber-500
-      return '#10A37F'; // OpenAI green
+      if (percentOfTarget > 100) return STATUS.danger;
+      if (percentOfTarget > 90) return STATUS.warn;
+      return STATUS.good;
     }
 
     const isDeficit = targetCalories < maintenanceCalories;  // Cutting
@@ -60,56 +69,29 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
     if (isAligned) {
       // ALIGNED SIDE (good direction) - Gradual thresholds
       const absDiff = Math.abs(percentDiff);
-      if (absDiff <= 10) return '#10A37F';  // green - 0-10%
-      if (absDiff <= 20) return '#F59E0B';  // yellow - 10-20%
-      if (absDiff <= 30) return '#F97316';  // orange - 20-30%
-      return '#EF4444';                     // red - >30%
+      if (absDiff <= 10) return STATUS.good;   // 0-10%
+      if (absDiff <= 20) return STATUS.warn;   // 10-20%
+      if (absDiff <= 30) return STATUS.alert;  // 20-30%
+      return STATUS.danger;                    // >30%
     } else {
       // NON-ALIGNED SIDE (bad direction) - Strict threshold
       const absDiff = Math.abs(percentDiff);
-      if (absDiff <= 5) return '#10A37F';   // green - 0-5% tolerance
-      return '#EF4444';                     // red - >5%
+      if (absDiff <= 5) return STATUS.good;    // 0-5% tolerance
+      return STATUS.danger;                    // >5%
     }
   };
 
   const getProteinColor = () => {
-    if (totals.protein === 0) return '#9CA3AF'; // gray-400
-    if (targetProtein === 0) return '#9CA3AF';
+    if (totals.protein === 0) return STATUS.none;
+    if (targetProtein === 0) return STATUS.none;
 
     // Calculate percentage below target
     const percentBelow = ((targetProtein - totals.protein) / targetProtein) * 100;
 
-    // Green: at or above target, or 0-10% below
-    if (percentBelow <= 10) return '#10A37F';  // green - 0-10% below
-
-    // Yellow: 10-20% below target
-    if (percentBelow <= 20) return '#F59E0B';  // yellow - 10-20% below
-
-    // Orange: 20-30% below target
-    if (percentBelow <= 30) return '#F97316';  // orange - 20-30% below
-
-    // Red: more than 30% below target
-    return '#EF4444'; // red - >30% below
-  };
-
-
-  // Get background gradient class based on percentage and color
-  const getCalorieGradient = () => {
-    const color = getCalorieColor();
-    if (color === '#10A37F') return 'bg-gradient-to-br from-green-50 to-emerald-50';
-    if (color === '#F59E0B') return 'bg-gradient-to-br from-yellow-50 to-amber-50';
-    if (color === '#F97316') return 'bg-gradient-to-br from-orange-50 to-red-50';
-    if (color === '#EF4444') return 'bg-gradient-to-br from-red-50 to-pink-50';
-    return 'bg-gray-50';
-  };
-
-  const getProteinGradient = () => {
-    const color = getProteinColor();
-    if (color === '#10A37F') return 'bg-gradient-to-br from-green-50 to-emerald-50';
-    if (color === '#F59E0B') return 'bg-gradient-to-br from-yellow-50 to-amber-50';
-    if (color === '#F97316') return 'bg-gradient-to-br from-orange-50 to-red-50';
-    if (color === '#EF4444') return 'bg-gradient-to-br from-red-50 to-pink-50';
-    return 'bg-gray-50';
+    if (percentBelow <= 10) return STATUS.good;   // at/above target or 0-10% below
+    if (percentBelow <= 20) return STATUS.warn;   // 10-20% below
+    if (percentBelow <= 30) return STATUS.alert;  // 20-30% below
+    return STATUS.danger;                         // >30% below
   };
 
   return (
@@ -123,7 +105,7 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
               cx={size / 2}
               cy={size / 2}
               r={radius}
-              stroke="#E5E7EB"
+              stroke={tokens.colors.line.DEFAULT}
               strokeWidth={strokeWidth}
               fill="none"
             />
@@ -142,13 +124,13 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs font-bold text-gray-900">{Math.round(caloriePercentage)}%</span>
+            <span className="text-xs font-bold text-ink tabular-nums">{Math.round(caloriePercentage)}%</span>
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-600 font-medium">Calories</div>
-          <div className="text-sm font-bold text-gray-900">{Math.round(totals.calories)}</div>
-          <div className="text-xs text-gray-500">of {targetCalories}</div>
+          <div className="text-xs text-ink-muted font-medium">Calories</div>
+          <div className="text-sm font-bold text-ink tabular-nums">{Math.round(totals.calories)}</div>
+          <div className="text-xs text-ink-muted tabular-nums">of {targetCalories}</div>
         </div>
       </div>
 
@@ -161,7 +143,7 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
               cx={size / 2}
               cy={size / 2}
               r={radius}
-              stroke="#E5E7EB"
+              stroke={tokens.colors.line.DEFAULT}
               strokeWidth={strokeWidth}
               fill="none"
             />
@@ -180,13 +162,13 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs font-bold text-gray-900">{Math.round(proteinPercentage)}%</span>
+            <span className="text-xs font-bold text-ink tabular-nums">{Math.round(proteinPercentage)}%</span>
           </div>
         </div>
         <div>
-          <div className="text-xs text-gray-600 font-medium">Protein</div>
-          <div className="text-sm font-bold text-gray-900">{Math.round(totals.protein * 10) / 10}g</div>
-          <div className="text-xs text-gray-500">of {targetProtein}g</div>
+          <div className="text-xs text-ink-muted font-medium">Protein</div>
+          <div className="text-sm font-bold text-ink tabular-nums">{Math.round(totals.protein * 10) / 10}g</div>
+          <div className="text-xs text-ink-muted tabular-nums">of {targetProtein}g</div>
         </div>
       </div>
     </div>

@@ -4,10 +4,9 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ActivityIndicator } from 'react-native';
-import { Box, VStack, Text, HStack, Pressable } from '@gluestack-ui/themed';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/database';
+import Button from '@/components/ui/Button';
 import type { UserPositionInfo } from '@/types';
 
 export default function WaitlistScreen() {
@@ -34,158 +33,79 @@ export default function WaitlistScreen() {
 
   if (loading) {
     return (
-      <Box flex={1} bg="#000000" alignItems="center" justifyContent="center">
-        <ActivityIndicator size="large" color="#fff" />
-      </Box>
+      <div className="min-h-screen bg-paper flex items-center justify-center">
+        <div className="flex items-center gap-2 text-ink-faint">
+          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span className="text-sm">Loading...</span>
+        </div>
+      </div>
     );
   }
 
   // Position couldn't be loaded — never render "#undefined" to a prospect
   if (!positionInfo) {
     return (
-      <Box flex={1} bg="#000000" alignItems="center" justifyContent="center" p={16}>
-        <VStack alignItems="center" sx={{ maxWidth: 400 }}>
-          <Text fontSize={48} mb={24}>🚀</Text>
-          <Text fontSize={28} fontWeight="700" color="white" mb={12} textAlign="center">
-            You&apos;re on the list!
-          </Text>
-          <Text fontSize={16} color="#9CA3AF" mb={24} textAlign="center">
+      <div className="min-h-screen bg-paper flex items-center justify-center px-6">
+        <div className="w-full max-w-sm bg-paper-raised rounded-card border border-line shadow-card p-6 text-center">
+          <div className="text-4xl mb-4">🚀</div>
+          <h1 className="text-xl font-bold tracking-tight text-ink mb-2">You&apos;re on the list!</h1>
+          <p className="text-sm text-ink-muted mb-6">
             We couldn&apos;t load your position right now. Check your connection and try again.
-          </Text>
-          <Pressable
-            bg="white"
-            borderRadius={12}
-            px={24}
-            py={12}
-            onPress={loadWaitlistInfo}
-            $active-opacity={0.8}
-          >
-            <Text fontSize={16} fontWeight="600" color="#000000">
-              Retry
-            </Text>
-          </Pressable>
-        </VStack>
-      </Box>
+          </p>
+          <Button fullWidth onClick={loadWaitlistInfo}>
+            Retry
+          </Button>
+        </div>
+      </div>
     );
   }
 
   return (
-    <Box flex={1} bg="#000000" alignItems="center" justifyContent="center" p={16}>
-      {/* Animated background elements */}
-      <Box
-        sx={{
-          position: 'absolute',
-          top: '25%',
-          left: '25%',
-          width: 384,
-          height: 384,
-          backgroundColor: 'rgba(168, 85, 247, 0.1)',
-          borderRadius: 9999,
-          opacity: 0.8,
-        }}
-      />
-      <Box
-        sx={{
-          position: 'absolute',
-          bottom: '25%',
-          right: '25%',
-          width: 384,
-          height: 384,
-          backgroundColor: 'rgba(59, 130, 246, 0.1)',
-          borderRadius: 9999,
-          opacity: 0.8,
-        }}
-      />
+    <div className="min-h-screen bg-paper flex items-center justify-center px-6 py-10">
+      <div className="w-full max-w-md text-center animate-fade-in">
+        <div className="text-5xl mb-6">🚀</div>
 
-      {/* Main content */}
-      <VStack sx={{ position: 'relative', zIndex: 10, maxWidth: 600, width: '100%' }} alignItems="center">
-        {/* Rocket emoji */}
-        <Text fontSize={64} mb={32}>
-          🚀
-        </Text>
+        <h1 className="text-3xl font-bold tracking-tight text-ink mb-6">You&apos;re on the list!</h1>
 
-        {/* Main heading */}
-        <Text fontSize={48} fontWeight="700" color="white" mb={24} textAlign="center">
-          You're on the list!
-        </Text>
-
-        {/* User rank card */}
-        <Box mb={32} borderRadius={24} overflow="hidden" sx={{ shadowColor: 'black', shadowOpacity: 0.3, shadowRadius: 8, shadowOffset: { width: 0, height: 4 } }}>
-          <Box
-            p={4}
-            sx={{
-              background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #3b82f6 100%)',
-            }}
-          >
-            <Box bg="#000000" borderRadius={16} px={32} py={24} alignItems="center">
-              <Text fontSize={14} fontWeight="600" color="#9CA3AF" mb={8} textTransform="uppercase" sx={{ letterSpacing: 0.5 }}>
-                Your Position
-              </Text>
-              <Text
-                fontSize={96}
-                fontWeight="700"
-                sx={{
-                  background: 'linear-gradient(135deg, #a855f7 0%, #ec4899 50%, #3b82f6 100%)',
-                  WebkitBackgroundClip: 'text',
-                  WebkitTextFillColor: 'transparent',
-                }}
-              >
-                #{positionInfo?.rank}
-              </Text>
-            </Box>
-          </Box>
-        </Box>
+        {/* Position card */}
+        <div className="bg-paper-raised rounded-card border border-line shadow-card px-8 py-6 mb-8 inline-block">
+          <p className="text-xs font-semibold text-ink-muted uppercase tracking-wider mb-1">
+            Your Position
+          </p>
+          <p className="text-7xl font-bold tracking-tight text-ink tabular-nums">
+            #{positionInfo.rank}
+          </p>
+        </div>
 
         {/* Description */}
-        <VStack space="lg" mb={32} alignItems="center">
-          <Text fontSize={20} fontWeight="500" color="#D1D5DB" textAlign="center">
-            We're letting people in gradually.
-          </Text>
-          <Text fontSize={18} color="#9CA3AF" textAlign="center">
-            Currently allowing the first <Text fontWeight="600" color="white">{positionInfo?.maxAllowed}</Text> users.
-          </Text>
-          <Text fontSize={16} color="#6B7280" textAlign="center">
-            You're secured in line and will get instant access when we expand capacity.
-          </Text>
-        </VStack>
+        <div className="space-y-3 mb-8">
+          <p className="text-base font-medium text-ink-soft">
+            We&apos;re letting people in gradually.
+          </p>
+          <p className="text-sm text-ink-muted">
+            Currently allowing the first{' '}
+            <span className="font-semibold text-ink">{positionInfo.maxAllowed}</span> users.
+          </p>
+          <p className="text-sm text-ink-muted">
+            You&apos;re secured in line and will get instant access when we expand capacity.
+          </p>
+        </div>
 
         {/* Email display */}
-        <Box
-          bg="rgba(255, 255, 255, 0.05)"
-          borderWidth={1}
-          borderColor="rgba(255, 255, 255, 0.1)"
-          borderRadius={16}
-          p={24}
-          mb={32}
-          w="$full"
-          sx={{
-            backdropFilter: 'blur(8px)',
-          }}
-        >
-          <Text fontSize={14} color="#9CA3AF" mb={8} textAlign="center">
-            We'll notify you at
-          </Text>
-          <Text fontSize={18} color="white" fontWeight="500" textAlign="center">
-            {user?.email}
-          </Text>
-        </Box>
+        <div className="bg-paper-inset border border-line rounded-card p-5 mb-8">
+          <p className="text-xs text-ink-muted mb-1">We&apos;ll notify you at</p>
+          <p className="text-base text-ink font-medium">{user?.email}</p>
+        </div>
 
         {/* Status indicator */}
-        <HStack alignItems="center" space="sm">
-          <Box w={8} h={8} bg="#10B981" borderRadius={9999} />
-          <Text fontSize={14} color="#9CA3AF">
-            Your spot is secured
-          </Text>
-        </HStack>
-
-        {/* Additional info */}
-        <Box mt={48} pt={32} borderTopWidth={1} borderTopColor="rgba(255, 255, 255, 0.1)">
-          <Text fontSize={14} color="#6B7280" textAlign="center">
-            Questions? Contact us at{' '}
-            <Text color="#C084FC">support@foodtracker.com</Text>
-          </Text>
-        </Box>
-      </VStack>
-    </Box>
+        <div className="flex items-center justify-center gap-2">
+          <span className="w-2 h-2 bg-accent-500 rounded-full" />
+          <span className="text-sm text-ink-muted">Your spot is secured</span>
+        </div>
+      </div>
+    </div>
   );
 }

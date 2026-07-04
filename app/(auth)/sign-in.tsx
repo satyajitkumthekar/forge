@@ -4,23 +4,11 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-import { KeyboardAvoidingView, Platform } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { friendlyAuthError } from '@/lib/auth-errors';
-import {
-  Box,
-  VStack,
-  HStack,
-  Text,
-  Input,
-  InputField,
-  Button,
-  ButtonText,
-  Spinner,
-  Pressable,
-} from '@gluestack-ui/themed';
-import { colors, spacing, maxWidth } from '@/lib/design-tokens';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
 
 export default function SignInScreen() {
   const [email, setEmail] = useState('');
@@ -37,7 +25,8 @@ export default function SignInScreen() {
     };
   }, []);
 
-  const handleSignIn = async () => {
+  const handleSignIn = async (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (loading) return;
 
     if (!email || !password) {
@@ -65,119 +54,70 @@ export default function SignInScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={{ flex: 1, backgroundColor: colors.background }}
-    >
-      <Box
-        flex={1}
-        justifyContent="center"
-        px={{ base: spacing.lg, md: spacing['2xl'] }}
-        bg={colors.background}
-        sx={{
-          maxWidth: maxWidth.form,
-          width: '100%',
-          alignSelf: 'center',
-        }}
-      >
-        {/* Logo/Title */}
-        <VStack alignItems="center" mb="$8">
-          <Box
-            w="$16"
-            h="$16"
-            bg="$black"
-            borderRadius="$2xl"
-            alignItems="center"
-            justifyContent="center"
-            mb="$4"
-          >
-            <Text color="$white" fontSize="$2xl" fontWeight="$bold">
-              FT
-            </Text>
-          </Box>
-          <Text fontSize="$3xl" fontWeight="$bold" color="$textLight900">
-            Food Tracker
-          </Text>
-          <Text color="$textLight500" mt="$2">
-            Track your nutrition with AI
-          </Text>
-        </VStack>
+    <div className="min-h-screen bg-paper flex items-center justify-center px-6 py-10">
+      <div className="w-full max-w-sm">
+        {/* Logo / Title */}
+        <div className="flex flex-col items-center mb-8">
+          <div className="w-16 h-16 bg-ink rounded-card flex items-center justify-center mb-4">
+            <span className="text-white text-2xl font-bold tracking-tight">FT</span>
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-ink">Food Tracker</h1>
+          <p className="text-sm text-ink-muted mt-2">Track your nutrition with AI</p>
+        </div>
 
         {/* Form */}
-        <VStack space="md">
-          <Box>
-            <Text fontSize="$sm" fontWeight="$medium" color="$textLight700" mb="$2">
-              Email
-            </Text>
-            <Input size="md" variant="outline">
-              <InputField
-                value={email}
-                onChangeText={setEmail}
-                placeholder="your@email.com"
-                autoCapitalize="none"
-                keyboardType="email-address"
-                returnKeyType="next"
-              />
-            </Input>
-          </Box>
-
-          <Box>
-            <Text fontSize="$sm" fontWeight="$medium" color="$textLight700" mb="$2">
-              Password
-            </Text>
-            <Input size="md" variant="outline">
-              <InputField
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                type="password"
-                returnKeyType="go"
-                onSubmitEditing={handleSignIn}
-              />
-            </Input>
-          </Box>
+        <form onSubmit={handleSignIn} className="space-y-4" noValidate>
+          <Input
+            id="email"
+            type="email"
+            label="Email"
+            placeholder="your@email.com"
+            autoComplete="email"
+            inputMode="email"
+            autoCapitalize="none"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            disabled={loading}
+          />
+          <Input
+            id="password"
+            type="password"
+            label="Password"
+            placeholder="••••••••"
+            autoComplete="current-password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            disabled={loading}
+          />
 
           {error ? (
-            <Box
-              bg="$red50"
-              borderColor="$red200"
-              borderWidth="$1"
-              borderRadius="$lg"
-              p="$3"
-            >
-              <Text color="$red800" fontSize="$sm">
-                {error}
-              </Text>
-            </Box>
+            <div className="bg-danger-soft border border-danger/20 rounded-ctrl p-3 animate-fade-in">
+              <p className="text-danger text-sm">{error}</p>
+            </div>
           ) : null}
 
-          <Button
-            size="lg"
-            onPress={handleSignIn}
-            isDisabled={loading}
-            bg="$black"
-            borderRadius="$lg"
-            $active-opacity={0.8}
-          >
+          <Button type="submit" fullWidth disabled={loading}>
             {loading ? (
-              <Spinner color="$white" />
+              <>
+                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                Signing in...
+              </>
             ) : (
-              <ButtonText fontWeight="$semibold">Sign In</ButtonText>
+              'Sign In'
             )}
           </Button>
 
-          <HStack justifyContent="center" alignItems="center" mt="$4">
-            <Text color="$textLight600">Don't have an account? </Text>
-            <Link href="/sign-up" asChild>
-              <Pressable>
-                <Text color="$black" fontWeight="$semibold">
-                  Sign Up
-                </Text>
-              </Pressable>
+          <p className="text-center text-sm text-ink-muted pt-2">
+            Don&apos;t have an account?{' '}
+            <Link href="/sign-up" className="text-ink font-semibold hover:underline">
+              Sign Up
             </Link>
-          </HStack>
-        </VStack>
-      </Box>
-    </KeyboardAvoidingView>
+          </p>
+        </form>
+      </div>
+    </div>
   );
 }

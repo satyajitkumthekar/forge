@@ -1,3 +1,5 @@
+const { colors, radii, shadows } = require('./lib/tokens');
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
@@ -5,7 +7,31 @@ module.exports = {
     "./components/**/*.{js,jsx,ts,tsx}",
   ],
   theme: {
-    extend: {},
+    extend: {
+      colors,
+      borderRadius: {
+        card: radii.card,
+        ctrl: radii.ctrl,
+      },
+      boxShadow: {
+        card: shadows.card,
+        overlay: shadows.overlay,
+      },
+      keyframes: {
+        'toast-in': {
+          '0%': { opacity: '0', transform: 'translateY(-8px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
+        'fade-in': {
+          '0%': { opacity: '0' },
+          '100%': { opacity: '1' },
+        },
+      },
+      animation: {
+        'toast-in': 'toast-in 200ms ease-out',
+        'fade-in': 'fade-in 200ms ease-out',
+      },
+    },
   },
   plugins: [],
 }

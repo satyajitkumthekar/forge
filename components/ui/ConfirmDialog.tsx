@@ -4,6 +4,7 @@
  */
 
 import React from 'react';
+import Button from '@/components/ui/Button';
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -30,27 +31,17 @@ export default function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-6" role="dialog" aria-modal="true">
-      <div className="absolute inset-0 bg-black/40" onClick={onCancel} />
-      <div className="relative bg-white rounded-xl border border-gray-200 shadow-lg p-5 w-full max-w-sm">
-        <h2 className="text-sm font-bold text-gray-900">{title}</h2>
-        {message && <p className="text-sm text-gray-600 mt-1.5">{message}</p>}
+      <div className="absolute inset-0 bg-ink/40" onClick={onCancel} />
+      <div className="relative bg-paper-raised rounded-card border border-line shadow-overlay p-5 w-full max-w-sm">
+        <h2 className="text-sm font-bold tracking-tight text-ink">{title}</h2>
+        {message && <p className="text-sm text-ink-soft mt-1.5">{message}</p>}
         <div className="flex gap-2 mt-5">
-          <button
-            onClick={onCancel}
-            className="flex-1 min-h-[44px] px-4 rounded-lg border border-gray-300 bg-white text-sm font-medium text-gray-900 hover:bg-gray-50 active:bg-gray-100 transition-all"
-          >
+          <Button variant="secondary" className="flex-1" onClick={onCancel}>
             {cancelLabel}
-          </button>
-          <button
-            onClick={onConfirm}
-            className={`flex-1 min-h-[44px] px-4 rounded-lg text-sm font-medium text-white transition-all ${
-              destructive
-                ? 'bg-red-600 hover:bg-red-700 active:bg-red-800'
-                : 'bg-black hover:bg-gray-800 active:bg-gray-700'
-            }`}
-          >
+          </Button>
+          <Button variant={destructive ? 'destructive' : 'primary'} className="flex-1" onClick={onConfirm}>
             {confirmLabel}
-          </button>
+          </Button>
         </div>
       </div>
     </div>
