@@ -5,8 +5,7 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { View, Text, useWindowDimensions } from 'react-native';
-import { LineChart } from 'react-native-gifted-charts';
+import { useWindowDimensions } from 'react-native';
 import { db } from '@/lib/database';
 import { api } from '@/lib/api';
 import { toast } from '@/lib/toast';
@@ -14,6 +13,17 @@ import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { getWeekStart, formatWeekRange, getWeeklyStats } from '@/utils/weekly-stats';
 import { appToday } from '@/utils/date';
 import { format, addDays } from 'date-fns';
+import { formatDate, getTierColor } from '@/components/admin/helpers';
+import Button from '@/components/ui/Button';
+import Input from '@/components/ui/Input';
+import { Skeleton, SkeletonRow, SkeletonStat } from '@/components/ui/Skeleton';
+import StatTile from '@/components/admin/StatTile';
+import SectionDisclosure from '@/components/admin/SectionDisclosure';
+import MetricLineChart from '@/components/admin/MetricLineChart';
+import WeekSelector from '@/components/admin/WeekSelector';
+import UserActivityTable from '@/components/admin/UserActivityTable';
+import UserChips from '@/components/admin/UserChips';
+import CoachTable from '@/components/admin/CoachTable';
 import type { AnalyticsSummary, DailyMetrics, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis } from '@/types';
 
 // Cache TTL: 5 minutes (analytics don't need to be real-time)
@@ -521,140 +531,30 @@ export default function AnalyticsScreen() {
     }
   };
 
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' });
-  };
-
-  const formatDateTime = (dateString: string | null) => {
-    if (!dateString) return 'Never';
-    const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
+  const handleRefreshCoaching = async (userId: string) => {
+    // Clear cache and reload
+    setCoachingAnalysisData(prev => {
+      const newMap = new Map(prev);
+      newMap.delete(userId);
+      return newMap;
     });
-  };
-
-  const formatLogTime = (dateString: string) => {
-    const date = new Date(dateString);
-    if (isNaN(date.getTime())) return '';
-    return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
-  };
-
-  // Gap between two consecutive logs, e.g. "3h 15m"; null if under a minute or invalid
-  const formatLogGap = (prevCreatedAt: string, currCreatedAt: string): string | null => {
-    const diffMs = new Date(currCreatedAt).getTime() - new Date(prevCreatedAt).getTime();
-    if (!isFinite(diffMs) || diffMs < 60 * 1000) return null;
-    const totalMins = Math.round(diffMs / (60 * 1000));
-    const hours = Math.floor(totalMins / 60);
-    const mins = totalMins % 60;
-    return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
-  };
-
-  const getTierColor = (tier: string) => {
-    switch (tier) {
-      case 'admin':
-        return 'bg-purple-100 text-purple-700 border-purple-200';
-      case 'pro':
-        return 'bg-blue-100 text-blue-700 border-blue-200';
-      default:
-        return 'bg-paper-inset text-ink-soft border-line';
-    }
-  };
-
-  // Helper function to get color coding for daily calories
-  // Aligned side: gradual (0-10% green, 10-20% yellow, 20-30% orange, >30% red)
-  // Non-aligned side: strict (>5% red)
-  const getCaloriesColor = (calories: number, target: number, maintenance: number) => {
-    if (calories === 0) return 'bg-paper-inset text-ink-muted';
-
-    const isDeficit = target < maintenance;  // Cutting
-    const isSurplus = target > maintenance;  // Bulking
-
-    const diff = calories - target;
-    const percentDiff = (diff / target) * 100;  // Positive = above, negative = below
-
-    // Determine if we're on the "aligned" side (good direction)
-    const isAligned = (isDeficit && diff < 0) || (isSurplus && diff > 0);
-
-    if (isAligned) {
-      // ALIGNED SIDE (good direction) - Gradual thresholds
-      const absDiff = Math.abs(percentDiff);
-      if (absDiff <= 10) return 'bg-accent-100 text-accent-700';      // 0-10%
-      if (absDiff <= 20) return 'bg-yellow-100 text-yellow-700';    // 10-20%
-      if (absDiff <= 30) return 'bg-orange-100 text-orange-700';    // 20-30%
-      return 'bg-red-100 text-red-700';                             // >30%
-    } else {
-      // NON-ALIGNED SIDE (bad direction) - Strict threshold
-      const absDiff = Math.abs(percentDiff);
-      if (absDiff <= 5) return 'bg-accent-100 text-accent-700';       // 0-5% tolerance
-      return 'bg-red-100 text-red-700';                             // >5%
-    }
-  };
-
-  // Helper function to get color coding for daily protein
-  // 0-10% green, 10-20% yellow, 20-30% orange, >30% red
-  const getProteinColor = (protein: number, target: number) => {
-    if (protein === 0) return 'bg-paper-inset text-ink-muted';
-
-    // Calculate percentage below target
-    const percentBelow = ((target - protein) / target) * 100;
-
-    // Green: at or above target, or 0-10% below
-    if (percentBelow <= 10) return 'bg-accent-100 text-accent-700';    // 0-10% below
-
-    // Yellow: 10-20% below target
-    if (percentBelow <= 20) return 'bg-yellow-100 text-yellow-700';  // 10-20% below
-
-    // Orange: 20-30% below target
-    if (percentBelow <= 30) return 'bg-orange-100 text-orange-700';  // 20-30% below
-
-    // Red: more than 30% below target
-    return 'bg-red-100 text-red-700';                                // >30% below
-  };
-
-  // Calculate deficit/surplus status and color
-  const getDeficitDisplay = (dailyDeficit: number, targetCal: number, maintenance: number) => {
-    const isCutting = targetCal < maintenance;
-    const isBulking = targetCal > maintenance;
-    const isDeficit = dailyDeficit < 0;
-    const isSurplus = dailyDeficit > 0;
-
-    let color = 'text-ink-soft';
-    let label = 'Maintenance';
-
-    if (isDeficit) {
-      // In deficit
-      label = `${Math.abs(dailyDeficit)} cal deficit`;
-      color = (isCutting) ? 'text-accent-700' : 'text-red-700';
-    } else if (isSurplus) {
-      // In surplus
-      label = `${Math.abs(dailyDeficit)} cal surplus`;
-      color = (isBulking) ? 'text-accent-700' : 'text-red-700';
-    }
-
-    return { label, color };
+    await loadCoachingAnalysis(userId);
   };
 
   if (error) {
     return (
       <div className="flex items-center justify-center h-screen bg-paper p-12">
-        <div className="max-w-md bg-paper-raised rounded-card border border-red-200 p-6 shadow-card">
+        <div className="max-w-md bg-paper-raised rounded-card border border-danger-soft p-6 shadow-card">
           <div className="flex items-start gap-3">
-            <svg className="w-6 h-6 text-red-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-6 h-6 text-danger flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
             </svg>
             <div className="flex-1">
-              <h3 className="text-sm font-bold text-ink mb-1">Error Loading Analytics</h3>
+              <h3 className="text-sm font-semibold tracking-tight text-ink mb-1">Error Loading Analytics</h3>
               <p className="text-sm text-ink-soft mb-4">{error}</p>
-              <button
-                onClick={() => loadAnalytics(true)}
-                className="px-4 py-2 bg-ink text-white rounded-ctrl text-sm font-medium hover:bg-ink-soft transition-all"
-              >
+              <Button variant="primary" onClick={() => loadAnalytics(true)}>
                 Retry
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -664,13 +564,32 @@ export default function AnalyticsScreen() {
 
   if (loading || !summary || !dailyMetrics) {
     return (
-      <div className="flex items-center justify-center h-screen bg-paper p-12">
-        <div className="flex items-center gap-3">
-          <svg className="animate-spin h-5 w-5 text-ink" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <span className="text-ink font-medium">Loading analytics...</span>
+      <div className="h-screen overflow-y-auto bg-paper p-3 md:p-4">
+        <div className="max-w-7xl mx-auto">
+          {/* Stat tiles skeleton */}
+          <div className="grid grid-cols-3 gap-3 mt-4">
+            <SkeletonStat />
+            <SkeletonStat />
+            <SkeletonStat />
+          </div>
+
+          {/* Disclosure bars skeleton */}
+          <div className="mt-4 bg-paper-raised rounded-card border border-line p-4 shadow-card">
+            <Skeleton className="h-4 w-44" />
+          </div>
+          <div className="mt-4 bg-paper-raised rounded-card border border-line p-4 shadow-card">
+            <Skeleton className="h-4 w-44" />
+          </div>
+
+          {/* Table skeleton */}
+          <div className="mt-4 bg-paper-raised rounded-card border border-line shadow-card p-4">
+            <Skeleton className="h-4 w-40 mb-4" />
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
+            <SkeletonRow />
+          </div>
         </div>
       </div>
     );
@@ -704,60 +623,45 @@ export default function AnalyticsScreen() {
 
   return (
     <div className="h-screen overflow-y-auto bg-paper p-3 md:p-4">
-      <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
+      <div className="max-w-7xl mx-auto animate-fade-in">
+        {/* Sticky frosted header */}
+        <div className="sticky top-0 z-30 -mx-3 md:-mx-4 px-4 md:px-6 py-3 bg-paper/85 backdrop-blur-md border-b border-line/70 flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-ink">Admin Dashboard</h1>
-            <p className="text-xs text-ink-muted mt-1">System-wide metrics and user management</p>
+            <h1 className="text-lg font-semibold tracking-tight text-ink">Admin</h1>
+            <p className="text-[11px] text-ink-muted">System-wide metrics and user management</p>
           </div>
-          <button
-            onClick={() => loadAnalytics(true)}
-            className="px-4 py-2 border border-line bg-paper-raised rounded-ctrl text-sm font-medium text-ink hover:bg-paper-inset transition-all"
-          >
+          <Button variant="secondary" size="sm" onClick={() => loadAnalytics(true)}>
             Refresh
-          </button>
+          </Button>
+        </div>
+
+        {/* Stat row */}
+        <div className="grid grid-cols-3 gap-3 mt-4">
+          <StatTile label="Users" value={summary.totalUsers} />
+          <StatTile label="Food Logs" value={summary.totalFoodLogs} />
+          <StatTile label="Coach Calls" value={summary.totalCoachCalls} />
         </div>
 
         {/* SECTION 0: Admin Controls (Collapsible) */}
-        <div className="mb-8">
-          <button
-            onClick={() => setAdminControlsOpen(!adminControlsOpen)}
-            className="w-full bg-paper-raised rounded-card border border-line p-4 shadow-card hover:bg-paper-inset transition-all flex items-center justify-between"
+        <div className="mt-4">
+          <SectionDisclosure
+            title="Admin Controls"
+            subtitle="User access management"
+            open={adminControlsOpen}
+            onToggle={() => setAdminControlsOpen(!adminControlsOpen)}
+            accentDot
           >
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-bold text-purple-600">Admin Controls</span>
-              <span className="text-xs text-ink-muted">User access management</span>
-            </div>
-            <svg
-              className={`w-5 h-5 text-ink-muted transition-transform ${adminControlsOpen ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {adminControlsOpen && (
-            <div className="mt-4 bg-paper-raised rounded-card border border-line p-6 shadow-card">
+            <div className="bg-paper-raised rounded-card border border-line p-6 shadow-card">
               <div className="space-y-6">
                 {/* User Access Limit */}
                 <div>
-                  <label className="block text-xs font-medium text-ink-soft mb-1.5">
-                    User Access Limit
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="number"
-                      value={maxAllowedUsers}
-                      onChange={(e) => setMaxAllowedUsers(parseInt(e.target.value) || 0)}
-                      className="w-full px-3 py-2.5 border border-line-strong rounded-ctrl focus:outline-none focus:ring-1 focus:ring-gray-400 bg-paper-raised text-ink font-medium text-sm"
-                    />
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-ink-muted">
-                      users
-                    </div>
-                  </div>
+                  <Input
+                    label="User Access Limit"
+                    unit="users"
+                    type="number"
+                    value={maxAllowedUsers}
+                    onChange={(e) => setMaxAllowedUsers(parseInt(e.target.value) || 0)}
+                  />
                   <p className="mt-1 text-xs text-ink-muted">
                     <span className="font-semibold">{totalActiveUsers}</span> of{' '}
                     <span className="font-semibold">{maxAllowedUsers}</span> users have access
@@ -766,17 +670,15 @@ export default function AnalyticsScreen() {
 
                 {/* Tier API Limits */}
                 <div className="pt-4 border-t border-line">
-                  <h3 className="text-xs font-semibold text-ink-soft mb-3 uppercase tracking-wide">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-3">
                     Tier API Call Limits (Daily)
                   </h3>
                   <div className="space-y-3">
                     {/* Basic Tier */}
-                    <div className="flex items-center justify-between p-3 bg-paper-inset rounded-ctrl border border-line">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-paper-deep text-ink-soft uppercase">
-                          Basic
-                        </span>
-                      </div>
+                    <div className="flex items-center justify-between p-3 bg-paper-inset border border-line rounded-ctrl">
+                      <span className={`px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide rounded-full border ${getTierColor('basic')}`}>
+                        Basic
+                      </span>
                       <div className="flex gap-4 text-xs">
                         <span className="text-ink-muted">
                           Food: <span className="font-semibold text-ink">50</span>
@@ -788,12 +690,10 @@ export default function AnalyticsScreen() {
                     </div>
 
                     {/* Pro Tier */}
-                    <div className="flex items-center justify-between p-3 bg-blue-50 rounded-ctrl border border-blue-200">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-blue-100 text-blue-700 uppercase">
-                          Pro
-                        </span>
-                      </div>
+                    <div className="flex items-center justify-between p-3 bg-paper-inset border border-line rounded-ctrl">
+                      <span className={`px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide rounded-full border ${getTierColor('pro')}`}>
+                        Pro
+                      </span>
                       <div className="flex gap-4 text-xs">
                         <span className="text-ink-muted">
                           Food: <span className="font-semibold text-ink">100</span>
@@ -805,12 +705,10 @@ export default function AnalyticsScreen() {
                     </div>
 
                     {/* Admin Tier */}
-                    <div className="flex items-center justify-between p-3 bg-purple-50 rounded-ctrl border border-purple-200">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2 py-0.5 text-xs font-bold rounded-full bg-purple-100 text-purple-700 uppercase">
-                          Admin
-                        </span>
-                      </div>
+                    <div className="flex items-center justify-between p-3 bg-paper-inset border border-line rounded-ctrl">
+                      <span className={`px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide rounded-full border ${getTierColor('admin')}`}>
+                        Admin
+                      </span>
                       <div className="flex gap-4 text-xs">
                         <span className="text-ink-muted">
                           Food: <span className="font-semibold text-ink">Unlimited</span>
@@ -823,498 +721,109 @@ export default function AnalyticsScreen() {
                   </div>
                 </div>
 
-                <button
-                  onClick={handleSaveAdminControls}
-                  className="w-full px-4 py-2 bg-ink hover:bg-ink-soft text-white rounded-ctrl transition-all font-medium text-sm"
-                >
+                <Button variant="primary" fullWidth onClick={handleSaveAdminControls}>
                   {savedAdminControls ? '✓ Saved!' : 'Save'}
-                </button>
+                </Button>
               </div>
             </div>
-          )}
+          </SectionDisclosure>
         </div>
 
         {/* SECTION 1: App Analytics (Collapsible) */}
-        <div className="mb-8">
-          <button
-            onClick={() => setAppAnalyticsOpen(!appAnalyticsOpen)}
-            className="w-full bg-paper-raised rounded-card border border-line p-4 shadow-card hover:bg-paper-inset transition-all flex items-center justify-between"
+        <div className="mt-4">
+          <SectionDisclosure
+            title="App Analytics"
+            subtitle="System metrics and user management"
+            open={appAnalyticsOpen}
+            onToggle={() => setAppAnalyticsOpen(!appAnalyticsOpen)}
           >
-            <div className="flex items-center gap-3">
-              <span className="text-sm font-bold text-ink">App Analytics</span>
-              <span className="text-xs text-ink-muted">System metrics and user management</span>
-            </div>
-            <svg
-              className={`w-5 h-5 text-ink-muted transition-transform ${appAnalyticsOpen ? 'rotate-180' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-
-          {appAnalyticsOpen && (
-            <div className="mt-4 space-y-4">
-              {/* Summary Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {/* Total Users */}
-                <div className="bg-paper-raised rounded-card border border-line p-6 shadow-card">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-blue-100 rounded-ctrl flex items-center justify-center">
-                      <span className="text-xl">👥</span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Total Users</p>
-                      <p className="text-2xl font-bold text-ink">{summary.totalUsers}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Total Food Logs */}
-                <div className="bg-paper-raised rounded-card border border-line p-6 shadow-card">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-green-100 rounded-ctrl flex items-center justify-center">
-                      <span className="text-xl">📋</span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Total Food Logs</p>
-                      <p className="text-2xl font-bold text-ink">{summary.totalFoodLogs}</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Total Coach Calls */}
-                <div className="bg-paper-raised rounded-card border border-line p-6 shadow-card">
-                  <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-purple-100 rounded-ctrl flex items-center justify-center">
-                      <span className="text-xl">💬</span>
-                    </div>
-                    <div>
-                      <p className="text-xs font-semibold text-ink-muted uppercase tracking-wide">Total Coach Calls</p>
-                      <p className="text-2xl font-bold text-ink">{summary.totalCoachCalls}</p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
+            <div className="space-y-4">
               {/* Analytics Charts */}
-              <div className="space-y-4">
-                {/* Daily Active Users */}
-                <div className="bg-paper-raised rounded-card border border-line p-6 shadow-card">
-                  <h3 className="text-sm font-bold text-ink mb-4">Daily Active Users (Last 30 Days)</h3>
-                  <View style={{ alignItems: 'center' }}>
-                    <LineChart
-                      data={dailyMetrics.dailyActiveUsers.map(item => ({
-                        value: item.user_count,
-                        label: formatDate(item.date)
-                      }))}
-                      width={chartWidth}
-                      height={200}
-                      color="#3b82f6"
-                      thickness={2}
-                      startFillColor="rgba(59, 130, 246, 0.3)"
-                      endFillColor="rgba(59, 130, 246, 0.01)"
-                      startOpacity={0.9}
-                      endOpacity={0.2}
-                      spacing={30}
-                      noOfSections={5}
-                      yAxisColor="#E5E7EB"
-                      xAxisColor="#E5E7EB"
-                      yAxisTextStyle={{ color: '#6B7280', fontSize: 12 }}
-                      xAxisLabelTextStyle={{ color: '#6B7280', fontSize: 10, width: 70, textAlign: 'center' }}
-                      hideRules
-                      isAnimated
-                      animationDuration={300}
-                    />
-                  </View>
-                </div>
+              <MetricLineChart
+                title="Daily Active Users (Last 30 Days)"
+                data={dailyMetrics.dailyActiveUsers.map(item => ({
+                  value: item.user_count,
+                  label: formatDate(item.date)
+                }))}
+                width={chartWidth}
+              />
 
-                {/* Daily Food Logs */}
-                <div className="bg-paper-raised rounded-card border border-line p-6 shadow-card">
-                  <h3 className="text-sm font-bold text-ink mb-4">Daily Food Logs (Last 30 Days)</h3>
-                  <View style={{ alignItems: 'center' }}>
-                    <LineChart
-                      data={dailyMetrics.dailyFoodLogs.map(item => ({
-                        value: item.log_count,
-                        label: formatDate(item.date)
-                      }))}
-                      width={chartWidth}
-                      height={200}
-                      color="#10b981"
-                      thickness={2}
-                      startFillColor="rgba(16, 185, 129, 0.3)"
-                      endFillColor="rgba(16, 185, 129, 0.01)"
-                      startOpacity={0.9}
-                      endOpacity={0.2}
-                      spacing={30}
-                      noOfSections={5}
-                      yAxisColor="#E5E7EB"
-                      xAxisColor="#E5E7EB"
-                      yAxisTextStyle={{ color: '#6B7280', fontSize: 12 }}
-                      xAxisLabelTextStyle={{ color: '#6B7280', fontSize: 10, width: 70, textAlign: 'center' }}
-                      hideRules
-                      isAnimated
-                      animationDuration={300}
-                    />
-                  </View>
-                </div>
+              <MetricLineChart
+                title="Daily Food Logs (Last 30 Days)"
+                data={dailyMetrics.dailyFoodLogs.map(item => ({
+                  value: item.log_count,
+                  label: formatDate(item.date)
+                }))}
+                width={chartWidth}
+              />
 
-                {/* Daily Coach Calls */}
-                <div className="bg-paper-raised rounded-card border border-line p-6 shadow-card">
-                  <h3 className="text-sm font-bold text-ink mb-4">Daily Coach Calls (Last 30 Days)</h3>
-                  <View style={{ alignItems: 'center' }}>
-                    <LineChart
-                      data={dailyMetrics.dailyCoachCalls.map(item => ({
-                        value: item.call_count,
-                        label: formatDate(item.date)
-                      }))}
-                      width={chartWidth}
-                      height={200}
-                      color="#8b5cf6"
-                      thickness={2}
-                      startFillColor="rgba(139, 92, 246, 0.3)"
-                      endFillColor="rgba(139, 92, 246, 0.01)"
-                      startOpacity={0.9}
-                      endOpacity={0.2}
-                      spacing={30}
-                      noOfSections={5}
-                      yAxisColor="#E5E7EB"
-                      xAxisColor="#E5E7EB"
-                      yAxisTextStyle={{ color: '#6B7280', fontSize: 12 }}
-                      xAxisLabelTextStyle={{ color: '#6B7280', fontSize: 10, width: 70, textAlign: 'center' }}
-                      hideRules
-                      isAnimated
-                      animationDuration={300}
-                    />
-                  </View>
-                </div>
-              </div>
+              <MetricLineChart
+                title="Daily Coach Calls (Last 30 Days)"
+                data={dailyMetrics.dailyCoachCalls.map(item => ({
+                  value: item.call_count,
+                  label: formatDate(item.date)
+                }))}
+                width={chartWidth}
+              />
 
               {/* User Metrics Table */}
-              <div className="bg-paper-raised rounded-card border border-line shadow-card overflow-hidden">
-                <div className="p-6 border-b border-line">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h2 className="text-sm font-bold text-ink">User Activity</h2>
-                      <p className="text-xs text-ink-muted mt-0.5">
-                        Showing {filteredAndSortedUserMetrics.length > 0 ? (currentPage - 1) * USERS_PER_PAGE + 1 : 0}-{Math.min(currentPage * USERS_PER_PAGE, filteredAndSortedUserMetrics.length)} of {filteredAndSortedUserMetrics.length} users
-                        {searchQuery && ` (filtered from ${userMetrics.length} total)`}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Search Input */}
-                  <div className="relative">
-                    <input
-                      type="text"
-                      placeholder="Search users by email..."
-                      value={searchQuery}
-                      onChange={(e) => {
-                        setSearchQuery(e.target.value);
-                        setCurrentPage(1); // Reset to first page on search
-                      }}
-                      className="w-full px-4 py-2.5 pl-10 border border-line-strong rounded-ctrl focus:outline-none focus:ring-2 focus:ring-gray-400 bg-paper-raised text-ink text-sm"
-                    />
-                    <svg
-                      className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-ink-faint"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                    </svg>
-                  </div>
-                </div>
-
-                {userMetrics.length === 0 ? (
-                  <div className="p-12 text-center">
-                    <p className="text-sm text-ink-muted">No users yet</p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="overflow-x-auto">
-                      <table className="w-full">
-                        <thead>
-                          <tr className="bg-paper-inset border-b border-line">
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Email</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">User #</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Tier</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Client</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Maintenance Cal</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Target Cal</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Target Pro</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Food Logs</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Coach Calls</th>
-                            <th className="px-6 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Last Active</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {paginatedUserMetrics.map((user) => (
-                            <tr key={user.user_id} className="border-b border-line hover:bg-paper-inset transition-colors">
-                              <td className="px-6 py-4 text-sm text-ink">{user.email}</td>
-                              <td className="px-6 py-4 text-sm text-ink-soft">#{user.user_rank}</td>
-                              <td className="px-6 py-4">
-                                <select
-                                  value={user.account_type}
-                                  onChange={(e) => handleTierChange(user.user_id, e.target.value as 'basic' | 'pro' | 'admin')}
-                                  disabled={updatingTier === user.user_id}
-                                  className={`px-2.5 py-1.5 border rounded-ctrl text-xs font-semibold uppercase cursor-pointer hover:opacity-80 transition-all ${getTierColor(user.account_type)} ${updatingTier === user.user_id ? 'opacity-50 cursor-wait' : ''}`}
-                                >
-                                  <option value="basic">Basic</option>
-                                  <option value="pro">Pro</option>
-                                  <option value="admin">Admin</option>
-                                </select>
-                              </td>
-                              <td className="px-6 py-4">
-                                <button
-                                  onClick={() => handleClientToggle(user.user_id, user.client)}
-                                  disabled={updatingClient === user.user_id}
-                                  className={`px-3 py-1.5 rounded-ctrl text-xs font-bold transition-all ${
-                                    user.client
-                                      ? 'bg-accent-100 text-accent-700 border border-accent-100 hover:bg-accent-100'
-                                      : 'bg-paper-inset text-ink-muted border border-line hover:bg-paper-deep'
-                                  } ${updatingClient === user.user_id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
-                                >
-                                  {updatingClient === user.user_id ? '...' : user.client ? 'YES' : 'NO'}
-                                </button>
-                              </td>
-                              <td className="px-6 py-4">
-                                <input
-                                  type="number"
-                                  defaultValue={user.maintenance_calories}
-                                  onBlur={(e) => {
-                                    const newValue = parseInt(e.target.value) || user.maintenance_calories;
-                                    if (newValue !== user.maintenance_calories) {
-                                      handleMacroUpdate(
-                                        user.user_id,
-                                        newValue,
-                                        user.target_calories,
-                                        user.target_protein
-                                      );
-                                    }
-                                  }}
-                                  disabled={updatingMacros === user.user_id}
-                                  className="w-24 px-2 py-1 border border-line-strong rounded text-sm text-ink focus:outline-none focus:ring-2 focus:ring-gray-400"
-                                />
-                              </td>
-                              <td className="px-6 py-4">
-                                <input
-                                  type="number"
-                                  defaultValue={user.target_calories}
-                                  onBlur={(e) => {
-                                    const newValue = parseInt(e.target.value) || user.target_calories;
-                                    if (newValue !== user.target_calories) {
-                                      handleMacroUpdate(
-                                        user.user_id,
-                                        user.maintenance_calories,
-                                        newValue,
-                                        user.target_protein
-                                      );
-                                    }
-                                  }}
-                                  disabled={updatingMacros === user.user_id}
-                                  className="w-24 px-2 py-1 border border-line-strong rounded text-sm text-ink focus:outline-none focus:ring-2 focus:ring-gray-400"
-                                />
-                              </td>
-                              <td className="px-6 py-4">
-                                <input
-                                  type="number"
-                                  defaultValue={user.target_protein}
-                                  onBlur={(e) => {
-                                    const newValue = parseInt(e.target.value) || user.target_protein;
-                                    if (newValue !== user.target_protein) {
-                                      handleMacroUpdate(
-                                        user.user_id,
-                                        user.maintenance_calories,
-                                        user.target_calories,
-                                        newValue
-                                      );
-                                    }
-                                  }}
-                                  disabled={updatingMacros === user.user_id}
-                                  className="w-24 px-2 py-1 border border-line-strong rounded text-sm text-ink focus:outline-none focus:ring-2 focus:ring-gray-400"
-                                />
-                              </td>
-                              <td className="px-6 py-4 text-sm text-ink-soft">{user.food_logs_count}</td>
-                              <td className="px-6 py-4 text-sm text-ink-soft">{user.coach_calls_count}</td>
-                              <td className="px-6 py-4 text-sm text-ink-muted">{formatDateTime(user.last_active)}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-
-                    {/* Pagination Controls */}
-                    {totalPages > 1 && (
-                      <div className="px-6 py-4 border-t border-line flex items-center justify-between">
-                        <button
-                          onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-                          disabled={currentPage === 1}
-                          className={`px-4 py-2 border rounded-ctrl text-sm font-medium transition-all ${
-                            currentPage === 1
-                              ? 'border-line text-ink-faint cursor-not-allowed'
-                              : 'border-line-strong text-ink bg-paper-raised hover:bg-paper-inset'
-                          }`}
-                        >
-                          Previous
-                        </button>
-                        <span className="text-sm text-ink-soft">
-                          Page {currentPage} of {totalPages}
-                        </span>
-                        <button
-                          onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-                          disabled={currentPage === totalPages}
-                          className={`px-4 py-2 border rounded-ctrl text-sm font-medium transition-all ${
-                            currentPage === totalPages
-                              ? 'border-line text-ink-faint cursor-not-allowed'
-                              : 'border-line-strong text-ink bg-paper-raised hover:bg-paper-inset'
-                          }`}
-                        >
-                          Next
-                        </button>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
+              <UserActivityTable
+                users={paginatedUserMetrics}
+                filteredCount={filteredAndSortedUserMetrics.length}
+                totalCount={userMetrics.length}
+                usersPerPage={USERS_PER_PAGE}
+                searchQuery={searchQuery}
+                onSearchChange={(value) => {
+                  setSearchQuery(value);
+                  setCurrentPage(1); // Reset to first page on search
+                }}
+                currentPage={currentPage}
+                totalPages={totalPages}
+                onPrevPage={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                onNextPage={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                updatingTier={updatingTier}
+                updatingClient={updatingClient}
+                updatingMacros={updatingMacros}
+                onTierChange={handleTierChange}
+                onClientToggle={handleClientToggle}
+                onMacroUpdate={handleMacroUpdate}
+              />
             </div>
-          )}
+          </SectionDisclosure>
         </div>
 
         {/* SECTION 2: Coach Analytics (Main Section) */}
-        <div className="bg-paper-raised rounded-card border border-line shadow-card overflow-hidden">
+        <div className="mt-4 bg-paper-raised rounded-card border border-line shadow-card overflow-hidden">
           <div className="p-6 border-b border-line">
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h2 className="text-sm font-bold text-ink">Coach Analytics</h2>
+                <h2 className="text-sm font-semibold tracking-tight text-ink">Coach Analytics</h2>
                 <p className="text-xs text-ink-muted mt-0.5">Detailed nutrition tracking by week</p>
               </div>
             </div>
 
             {/* Week Selector */}
-            <div className="mb-4 bg-paper-inset rounded-ctrl border border-line p-3">
-              <div className="flex items-center justify-between">
-                <button
-                  onClick={() => navigateWeek(-1)}
-                  className="p-2 hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition-all"
-                  title="Previous week"
-                >
-                  <svg className="w-4 h-4 text-ink-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                  </svg>
-                </button>
-
-                <div className="text-center">
-                  <h3 className="text-sm font-bold text-ink">
-                    {formatWeekRange(weekStart)}
-                  </h3>
-                  {!isCurrentWeek() && (
-                    <button
-                      onClick={goToCurrentWeek}
-                      className="mt-1 px-3 py-1 bg-ink text-white text-xs font-medium rounded-ctrl hover:bg-ink-soft transition-all"
-                    >
-                      Current Week
-                    </button>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => navigateWeek(1)}
-                  disabled={isCurrentWeek()}
-                  className={`p-2 rounded-ctrl transition-all ${
-                    isCurrentWeek()
-                      ? 'opacity-30 cursor-not-allowed'
-                      : 'hover:bg-paper-inset active:bg-paper-deep'
-                  }`}
-                  title="Next week"
-                >
-                  <svg className="w-4 h-4 text-ink-muted" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </button>
-              </div>
+            <div className="mb-4">
+              <WeekSelector
+                label={formatWeekRange(weekStart)}
+                isCurrentWeek={isCurrentWeek()}
+                onPrev={() => navigateWeek(-1)}
+                onNext={() => navigateWeek(1)}
+                onGoToCurrent={goToCurrentWeek}
+              />
             </div>
 
             {/* User Selector (Collapsible) */}
             <div className="mb-4">
-              <button
-                onClick={() => setUserSelectorOpen(!userSelectorOpen)}
-                className="w-full bg-paper-inset rounded-ctrl border border-line p-3 hover:bg-paper-inset active:bg-paper-deep transition-all flex items-center justify-between"
-              >
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-semibold text-ink">User Selection</span>
-                  <span className="text-xs text-ink-muted">
-                    ({selectedUsers.size} of {coachAnalytics.length} selected)
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {!userSelectorOpen && (
-                    <>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          selectAllUsers();
-                        }}
-                        className="px-2 py-1 border border-line-strong bg-paper-raised rounded text-xs font-medium text-ink hover:bg-paper-inset transition-all"
-                      >
-                        Select All
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deselectAllUsers();
-                        }}
-                        className="px-2 py-1 border border-line-strong bg-paper-raised rounded text-xs font-medium text-ink hover:bg-paper-inset transition-all"
-                      >
-                        Clear
-                      </button>
-                    </>
-                  )}
-                  <svg
-                    className={`w-4 h-4 text-ink-muted transition-transform ${userSelectorOpen ? 'rotate-180' : ''}`}
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                </div>
-              </button>
-
-              {userSelectorOpen && (
-                <div className="mt-3 space-y-3">
-                  <div className="flex gap-2">
-                    <button
-                      onClick={selectAllUsers}
-                      className="px-3 py-1.5 border border-line bg-paper-raised rounded-ctrl text-xs font-medium text-ink hover:bg-paper-inset transition-all"
-                    >
-                      Select All
-                    </button>
-                    <button
-                      onClick={deselectAllUsers}
-                      className="px-3 py-1.5 border border-line bg-paper-raised rounded-ctrl text-xs font-medium text-ink hover:bg-paper-inset transition-all"
-                    >
-                      Deselect All
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {coachAnalytics.map(user => (
-                      <button
-                        key={user.user_id}
-                        onClick={() => toggleUserSelection(user.user_id)}
-                        className={`px-3 py-1.5 rounded-ctrl text-xs font-medium transition-all ${
-                          selectedUsers.has(user.user_id)
-                            ? 'bg-ink text-white'
-                            : 'bg-paper-inset text-ink-soft hover:bg-paper-deep'
-                        }`}
-                      >
-                        {user.email}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
+              <UserChips
+                users={coachAnalytics}
+                selectedUsers={selectedUsers}
+                open={userSelectorOpen}
+                onToggleOpen={() => setUserSelectorOpen(!userSelectorOpen)}
+                onToggleUser={toggleUserSelection}
+                onSelectAll={selectAllUsers}
+                onClear={deselectAllUsers}
+              />
             </div>
           </div>
 
@@ -1324,350 +833,19 @@ export default function AnalyticsScreen() {
               <p className="text-sm text-ink-muted">No users selected</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="bg-paper-inset border-b border-line">
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider sticky left-0 bg-paper-inset z-10">Email</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Target</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Weekly Avg</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Daily Avg +-</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-muted uppercase tracking-wider">Weekly Total</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-ink-muted uppercase tracking-wider">Mon</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-ink-muted uppercase tracking-wider">Tue</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-ink-muted uppercase tracking-wider">Wed</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-ink-muted uppercase tracking-wider">Thu</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-ink-muted uppercase tracking-wider">Fri</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-ink-muted uppercase tracking-wider">Sat</th>
-                    <th className="px-4 py-3 text-center text-xs font-semibold text-ink-muted uppercase tracking-wider">Sun</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredCoachAnalytics.map((user) => {
-                    const deficitDisplay = getDeficitDisplay(user.daily_deficit, user.target_calories, user.maintenance_calories);
-                    const weeklyDeficitDisplay = getDeficitDisplay(user.weekly_deficit, user.target_calories, user.maintenance_calories);
-                    const isExpanded = expandedRows.has(user.user_id);
-                    const isLoading = loadingExpanded.has(user.user_id);
-
-                    return (
-                      <React.Fragment key={user.user_id}>
-                        {/* Main Row */}
-                        <tr className="border-b border-line hover:bg-paper-inset transition-colors">
-                          <td className="px-4 py-4 text-sm text-ink font-medium sticky left-0 bg-paper-raised z-10">
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => toggleExpand(user.user_id)}
-                                className="p-1 hover:bg-paper-inset active:bg-paper-deep rounded transition-all"
-                                title={isExpanded ? 'Collapse' : 'Expand'}
-                              >
-                                <svg className={`w-4 h-4 text-ink-muted transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                                </svg>
-                              </button>
-                              <span>{user.email}</span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-4 text-xs text-ink-soft">
-                          <div className="text-ink-muted mb-1">Maint: {user.maintenance_calories} cal</div>
-                          <div>{user.target_calories} cal</div>
-                          <div>{user.target_protein}g pro</div>
-                        </td>
-                        <td className="px-4 py-4 text-xs text-ink-soft">
-                          <div>{user.avg_calories} cal</div>
-                          <div>{user.avg_protein}g pro</div>
-                        </td>
-                        <td className="px-4 py-4 text-xs">
-                          <div className={`font-semibold ${deficitDisplay.color}`}>{deficitDisplay.label}</div>
-                        </td>
-                        <td className="px-4 py-4 text-xs">
-                          <div className={`font-semibold ${weeklyDeficitDisplay.color}`}>{Math.abs(user.weekly_deficit)} cal</div>
-                          <div className="text-ink-faint text-xs mt-1">({user.days_logged} days)</div>
-                        </td>
-                        {/* Day 1-7 */}
-                        {[
-                          [user.d1_calories, user.d1_protein],
-                          [user.d2_calories, user.d2_protein],
-                          [user.d3_calories, user.d3_protein],
-                          [user.d4_calories, user.d4_protein],
-                          [user.d5_calories, user.d5_protein],
-                          [user.d6_calories, user.d6_protein],
-                          [user.d7_calories, user.d7_protein],
-                        ].map(([cal, pro], idx) => {
-                          const calColor = getCaloriesColor(cal, user.target_calories, user.maintenance_calories);
-                          const proColor = getProteinColor(Number(pro), user.target_protein);
-
-                          return (
-                            <td key={idx} className="px-2 py-4">
-                              {cal === 0 ? (
-                                <div className="text-center text-xs text-ink-faint">-</div>
-                              ) : (
-                                <div className="space-y-1">
-                                  <div className={`px-2 py-1 rounded text-xs font-bold text-center ${calColor}`}>
-                                    {cal}
-                                  </div>
-                                  <div className={`px-2 py-1 rounded text-xs font-bold text-center ${proColor}`}>
-                                    {Number(pro).toFixed(0)}g
-                                  </div>
-                                </div>
-                              )}
-                            </td>
-                          );
-                        })}
-                        </tr>
-
-                        {/* Expanded Row */}
-                        {isExpanded && (
-                          <tr>
-                            <td colSpan={13} className="px-4 py-6 bg-paper-raised border-t border-line/60">
-                              {isLoading ? (
-                                <div className="flex items-center justify-center py-8">
-                                  <div className="flex items-center gap-3">
-                                    <svg className="animate-spin h-5 w-5 text-ink" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                    </svg>
-                                    <span className="text-ink font-medium text-sm">Loading...</span>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div>
-                                  {/* View Toggle */}
-                                  <div className="flex justify-end mb-4">
-                                    <div className="inline-flex rounded-ctrl border border-line bg-paper-raised p-0.5">
-                                      <button
-                                        onClick={() => updateViewMode(user.user_id, 'table')}
-                                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                                          (expandedRowViewMode.get(user.user_id) || 'table') === 'table'
-                                            ? 'bg-ink text-white'
-                                            : 'text-ink-muted hover:text-ink'
-                                        }`}
-                                      >
-                                        Table
-                                      </button>
-                                      <button
-                                        onClick={() => updateViewMode(user.user_id, 'log')}
-                                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                                          (expandedRowViewMode.get(user.user_id) || 'table') === 'log'
-                                            ? 'bg-ink text-white'
-                                            : 'text-ink-muted hover:text-ink'
-                                        }`}
-                                      >
-                                        Log
-                                      </button>
-                                      <button
-                                        onClick={() => updateViewMode(user.user_id, 'coaching')}
-                                        className={`px-3 py-1.5 rounded-md text-xs font-medium transition-all ${
-                                          (expandedRowViewMode.get(user.user_id) || 'table') === 'coaching'
-                                            ? 'bg-ink text-white'
-                                            : 'text-ink-muted hover:text-ink'
-                                        }`}
-                                      >
-                                        Coaching
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  {/* Render content based on view mode */}
-                                  {(expandedRowViewMode.get(user.user_id) || 'table') === 'coaching' ? (
-                                    // Coaching View
-                                    loadingCoaching.has(user.user_id) ? (
-                                      <div className="flex items-center justify-center py-12">
-                                        <div className="flex items-center gap-3">
-                                          <svg className="animate-spin h-5 w-5 text-ink" viewBox="0 0 24 24">
-                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                                          </svg>
-                                          <span className="text-ink font-medium text-sm">Analyzing meal patterns...</span>
-                                        </div>
-                                      </div>
-                                    ) : coachingAnalysisData.has(user.user_id) ? (
-(() => {
-                                        const analysis = coachingAnalysisData.get(user.user_id)!;
-                                        return (
-                                          <div className="space-y-4">
-                                            {/* Simple Table */}
-                                            <div className="overflow-x-auto">
-                                              <table className="w-full border border-line rounded-ctrl">
-                                                <thead>
-                                                  <tr className="bg-paper-inset border-b border-line">
-                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-soft uppercase">Meal & Timing</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-soft uppercase">Examples</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-semibold text-ink-soft uppercase">Cal</th>
-                                                    <th className="px-4 py-3 text-center text-xs font-semibold text-ink-soft uppercase">Pro</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-soft uppercase">Frequency</th>
-                                                    <th className="px-4 py-3 text-left text-xs font-semibold text-ink-soft uppercase">Recommended Change</th>
-                                                  </tr>
-                                                </thead>
-                                                <tbody>
-                                                  {analysis.mealTable.map((meal, idx) => (
-                                                    <tr key={idx} className="border-b border-line/60 hover:bg-paper-inset">
-                                                      <td className="px-4 py-3">
-                                                        <div className="text-sm font-semibold text-ink">{meal.meal}</div>
-                                                        <div className="text-xs text-ink-muted mt-0.5">⏰ {meal.timing}</div>
-                                                      </td>
-                                                      <td className="px-4 py-3 text-xs text-ink-soft">
-                                                        {meal.examples.join(', ')}
-                                                      </td>
-                                                      <td className="px-4 py-3 text-center text-sm font-medium text-ink">{meal.avgCal}</td>
-                                                      <td className="px-4 py-3 text-center text-sm font-medium text-ink">{meal.avgPro}g</td>
-                                                      <td className="px-4 py-3 text-xs text-ink-soft">{meal.frequency}</td>
-                                                      <td className="px-4 py-3">
-                                                        {meal.change ? (
-                                                          <div className="text-sm text-accent-700 font-medium">{meal.change}</div>
-                                                        ) : (
-                                                          <span className="text-xs text-ink-faint">-</span>
-                                                        )}
-                                                      </td>
-                                                    </tr>
-                                                  ))}
-
-                                                  {/* Totals Row */}
-                                                  <tr className="bg-paper-inset border-t-2 border-line-strong">
-                                                    <td className="px-4 py-3 text-sm font-bold text-ink">Daily Avg</td>
-                                                    <td className="px-4 py-3 text-xs text-ink-faint">-</td>
-                                                    <td className="px-4 py-3 text-center">
-                                                      <div className="text-sm font-bold text-ink">{analysis.totals.currentCal} cal</div>
-                                                      <div className="text-xs text-ink-muted">Target: {analysis.totals.targetCal}</div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-center">
-                                                      <div className="text-sm font-bold text-ink">{analysis.totals.currentPro}g</div>
-                                                      <div className="text-xs text-ink-muted">Target: {analysis.totals.targetPro}g</div>
-                                                    </td>
-                                                    <td className="px-4 py-3 text-xs text-ink-faint">-</td>
-                                                    <td className="px-4 py-3">
-                                                      {(() => {
-                                                        const calGap = analysis.totals.targetCal - analysis.totals.currentCal;
-                                                        const proGap = analysis.totals.targetPro - analysis.totals.currentPro;
-                                                        return (
-                                                          <div className="text-xs">
-                                                            <div className={calGap > 0 ? 'text-red-600 font-medium' : 'text-accent-600 font-medium'}>
-                                                              Cal: {calGap > 0 ? '+' : ''}{calGap}
-                                                            </div>
-                                                            <div className={proGap > 0 ? 'text-red-600 font-medium' : 'text-accent-600 font-medium'}>
-                                                              Pro: {proGap > 0 ? '+' : ''}{proGap}g
-                                                            </div>
-                                                          </div>
-                                                        );
-                                                      })()}
-                                                    </td>
-                                                  </tr>
-                                                </tbody>
-                                              </table>
-                                            </div>
-
-                                            {/* Refresh Button */}
-                                            <button
-                                              onClick={async () => {
-                                                // Clear cache and reload
-                                                setCoachingAnalysisData(prev => {
-                                                  const newMap = new Map(prev);
-                                                  newMap.delete(user.user_id);
-                                                  return newMap;
-                                                });
-                                                await loadCoachingAnalysis(user.user_id);
-                                              }}
-                                              className="px-4 py-2 border border-line bg-paper-raised rounded-ctrl text-sm font-medium text-ink hover:bg-paper-inset transition-all"
-                                            >
-                                              Refresh Analysis
-                                            </button>
-                                          </div>
-                                        );
-                                      })()
-                                    ) : null
-                                  ) : (
-                                    <div className="overflow-x-auto">
-                                      <div className="flex gap-6 min-w-max">
-                                        {/* Render each day */}
-                                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((dayName, idx) => {
-                                          const date = addDays(weekStart, idx);
-                                          const dateStr = format(date, 'yyyy-MM-dd');
-                                          const entries = expandedRowsData.get(user.user_id)?.[dateStr] || [];
-                                          const viewMode = expandedRowViewMode.get(user.user_id) || 'table';
-
-                                          // Calculate totals for this day
-                                          const totalCal = entries.reduce((sum, e) => sum + e.calories, 0);
-                                          const totalPro = entries.reduce((sum, e) => sum + e.protein, 0);
-
-                                          const calColor = getCaloriesColor(totalCal, user.target_calories, user.maintenance_calories);
-                                          const proColor = getProteinColor(totalPro, user.target_protein);
-
-                                          return (
-                                            <div key={dateStr} className="flex-shrink-0 w-52">
-                                              {/* Day Header with totals */}
-                                              <div className="mb-2">
-                                                <div className="text-xs font-bold text-ink">{dayName} {format(date, 'M/d')}</div>
-                                                {totalCal === 0 ? (
-                                                  <div className="text-xs text-ink-faint mt-1">-</div>
-                                                ) : (
-                                                  <div className="flex gap-2 mt-1">
-                                                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${calColor}`}>
-                                                      {totalCal}
-                                                    </span>
-                                                    <span className={`px-2 py-0.5 rounded text-xs font-semibold ${proColor}`}>
-                                                      {totalPro.toFixed(0)}g
-                                                    </span>
-                                                  </div>
-                                                )}
-                                              </div>
-
-                                              {/* Food entries */}
-                                              <div className="space-y-1.5 max-h-48 overflow-y-auto">
-                                                {viewMode === 'table' ? (
-                                                  // Table view - compact with macros
-                                                  entries.map((entry, entryIdx) => {
-                                                    const gap = entryIdx > 0 ? formatLogGap(entries[entryIdx - 1].created_at, entry.created_at) : null;
-                                                    return (
-                                                      <React.Fragment key={entry.id}>
-                                                        {gap && (
-                                                          <div className="text-[10px] text-ink-faint italic">↓ {gap}</div>
-                                                        )}
-                                                        <div className="text-xs">
-                                                          <div className="flex items-baseline justify-between gap-2">
-                                                            <div className="font-medium text-ink-soft">{entry.name}</div>
-                                                            <div className="text-[10px] text-ink-faint flex-shrink-0">{formatLogTime(entry.created_at)}</div>
-                                                          </div>
-                                                          <div className="text-ink-muted">
-                                                            {entry.calories}c • {entry.protein.toFixed(0)}p
-                                                          </div>
-                                                        </div>
-                                                      </React.Fragment>
-                                                    );
-                                                  })
-                                                ) : (
-                                                  // Log view - shows original user input
-                                                  entries.map((entry, entryIdx) => {
-                                                    const gap = entryIdx > 0 ? formatLogGap(entries[entryIdx - 1].created_at, entry.created_at) : null;
-                                                    return (
-                                                      <React.Fragment key={entry.id}>
-                                                        {gap && (
-                                                          <div className="text-[10px] text-ink-faint italic">↓ {gap}</div>
-                                                        )}
-                                                        <div className="text-xs text-ink-soft">
-                                                          <span className="text-ink-faint">{formatLogTime(entry.created_at)}</span>{' '}
-                                                          {entry.description || entry.name} <span className="text-ink-muted">({entry.calories}c, {entry.protein.toFixed(0)}p)</span>
-                                                        </div>
-                                                      </React.Fragment>
-                                                    );
-                                                  })
-                                                )}
-                                              </div>
-                                            </div>
-                                          );
-                                        })}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                          </tr>
-                        )}
-                      </React.Fragment>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            <CoachTable
+              users={filteredCoachAnalytics}
+              weekStart={weekStart}
+              expandedRows={expandedRows}
+              loadingExpanded={loadingExpanded}
+              expandedRowsData={expandedRowsData}
+              expandedRowViewMode={expandedRowViewMode}
+              coachingAnalysisData={coachingAnalysisData}
+              loadingCoaching={loadingCoaching}
+              onToggleExpand={toggleExpand}
+              onUpdateViewMode={updateViewMode}
+              onRefreshCoaching={handleRefreshCoaching}
+            />
           )}
         </div>
       </div>
