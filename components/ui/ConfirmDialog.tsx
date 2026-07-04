@@ -32,7 +32,7 @@ export default function ConfirmDialog({
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center p-6" role="dialog" aria-modal="true">
       <div className="absolute inset-0 bg-ink/40" onClick={onCancel} />
-      <div className="relative bg-paper-raised rounded-card border border-line shadow-overlay p-5 w-full max-w-sm">
+      <div className="relative bg-paper-raised rounded-card shadow-overlay p-5 w-full max-w-sm">
         <h2 className="text-sm font-semibold tracking-tight text-ink">{title}</h2>
         {message && <p className="text-sm text-ink-soft mt-1.5">{message}</p>}
         <div className="flex gap-2 mt-5">

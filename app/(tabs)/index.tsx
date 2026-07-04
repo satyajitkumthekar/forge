@@ -399,7 +399,7 @@ export default function TrackScreen() {
       )}
 
       {/* Header with Settings */}
-      <div className="bg-paper-raised/70 backdrop-blur-sm border-b border-line px-4 md:px-6 lg:px-8 py-3">
+      <div className="bg-paper-raised/80 backdrop-blur-md border-b border-line/70 px-4 md:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto">
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-base md:text-lg font-semibold tracking-tight text-ink">Food Tracker</h1>
@@ -465,7 +465,7 @@ export default function TrackScreen() {
       </div>
 
       {/* Totals Section */}
-      <div className="bg-paper-raised/70 backdrop-blur-sm border-b border-line px-4 md:px-6 lg:px-8 py-3">
+      <div className="bg-paper-raised/80 backdrop-blur-md border-b border-line/70 px-4 md:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto">
           {loading ? (
             <div className="flex items-center justify-center gap-6">

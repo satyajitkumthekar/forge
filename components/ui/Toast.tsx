@@ -31,7 +31,7 @@ export default function ToastHost() {
       {toasts.map((t) => (
         <div
           key={t.id}
-          className="bg-paper-raised border border-line rounded-ctrl p-3 shadow-overlay flex items-center gap-2 animate-toast-in"
+          className="bg-paper-raised rounded-ctrl p-3 shadow-overlay flex items-center gap-2 animate-toast-in"
           role="status"
         >
           <svg className={`w-4 h-4 flex-shrink-0 ${iconColor[t.type]}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">

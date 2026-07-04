@@ -90,3 +90,69 @@ body, #root, #__next {
 .scrollbar-hide::-webkit-scrollbar {
   display: none;
 }
+
+/* Keyboard focus: visible ink ring; pointer interactions stay clean.
+   Form fields keep their own focus ring classes. */
+:focus {
+  outline: none;
+}
+:focus-visible {
+  outline: 2px solid rgba(31, 28, 24, 0.75);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: none;
+}
+
+/* Text selection in brand ink */
+::selection {
+  background-color: #1F1C18;
+  color: #FAF9F6;
+}
+
+/* Shimmer skeletons: light sweep across a warm base */
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
+}
+.skeleton-shimmer {
+  position: relative;
+  overflow: hidden;
+  background-color: #EDE9E0;
+}
+.skeleton-shimmer::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+
+/* Scroll-edge cue for horizontally scrollable tables (sticky first column) */
+.scroll-edge-r::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: -12px;
+  width: 12px;
+  height: 100%;
+  background: linear-gradient(to right, rgba(31, 28, 24, 0.06), transparent);
+  pointer-events: none;
+}
+
+/* Respect reduced-motion everywhere */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  html {
+    scroll-behavior: auto !important;
+  }
+}
