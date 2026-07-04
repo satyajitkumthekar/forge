@@ -473,12 +473,14 @@ export default function TrackScreen() {
               <SkeletonDonut size={60} />
             </div>
           ) : (
-            <Totals
-              entries={entries}
-              targetCalories={settings.target_calories}
-              targetProtein={settings.target_protein}
-              maintenanceCalories={settings.maintenance_calories}
-            />
+            <div className="animate-fade-in">
+              <Totals
+                entries={entries}
+                targetCalories={settings.target_calories}
+                targetProtein={settings.target_protein}
+                maintenanceCalories={settings.maintenance_calories}
+              />
+            </div>
           )}
         </div>
       </div>

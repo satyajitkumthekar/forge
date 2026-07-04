@@ -11,6 +11,7 @@ import { toast } from '@/lib/toast';
 import { format } from 'date-fns';
 import WeeklyChart from '@/components/WeeklyChart';
 import { SkeletonStat } from '@/components/ui/Skeleton';
+import { useCountUp } from '@/utils/use-count-up';
 import type { WeeklyStats, UserSettings } from '@/types';
 
 export default function DashboardScreen() {
@@ -20,6 +21,12 @@ export default function DashboardScreen() {
   // Split loading so week navigation stays visible while a week's stats load
   const [statsLoading, setStatsLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
+
+  // Display-only animated stat values (hooks must run before early returns)
+  const shownAvgCalories = useCountUp(stats?.averages.calories ?? 0);
+  const shownAvgProtein = useCountUp(stats?.averages.protein ?? 0);
+  const shownDailyValue = useCountUp(stats ? Math.abs(Math.round(stats.deficit.daily)) : 0);
+  const shownWeeklyValue = useCountUp(stats ? Math.abs(Math.round(stats.deficit.weekly)) : 0);
 
   const loadSettings = async () => {
     setLoadError(false);
@@ -274,18 +281,18 @@ export default function DashboardScreen() {
         ) : (
           <>
             {/* Key Metrics - Simplified to 4 */}
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3 animate-fade-in">
               {/* Average Daily Calories */}
               <div className="bg-paper-raised rounded-card border border-line p-4 shadow-card hover:border-line-strong transition-all">
                 <p className="text-xs font-semibold text-ink-muted mb-1">Avg Calories</p>
-                <p className="text-[28px] font-bold tracking-tight tabular-nums leading-tight text-ink">{stats.averages.calories}</p>
+                <p className="text-[28px] font-bold tracking-tight tabular-nums leading-tight text-ink">{shownAvgCalories}</p>
                 <p className="text-xs text-ink-muted mt-0.5">per day</p>
               </div>
 
               {/* Average Daily Protein */}
               <div className="bg-paper-raised rounded-card border border-line p-4 shadow-card hover:border-line-strong transition-all">
                 <p className="text-xs font-semibold text-ink-muted mb-1">Avg Protein</p>
-                <p className="text-[28px] font-bold tracking-tight tabular-nums leading-tight text-ink">{stats.averages.protein}g</p>
+                <p className="text-[28px] font-bold tracking-tight tabular-nums leading-tight text-ink">{shownAvgProtein}g</p>
                 <p className="text-xs text-ink-muted mt-0.5">per day</p>
               </div>
 
@@ -294,7 +301,7 @@ export default function DashboardScreen() {
                 <p className="text-xs font-semibold text-ink-muted mb-2">Daily Status</p>
                 <p className={`text-sm font-medium ${deficitColor} leading-relaxed`}>
                   You are in an average <span className="font-bold">{isDeficit ? 'deficit' : isSurplus ? 'surplus' : 'maintenance'}</span> of{' '}
-                  <span className="font-bold text-base">{dailyValue}</span> cal/day
+                  <span className="font-bold text-base tabular-nums">{shownDailyValue}</span> cal/day
                 </p>
               </div>
 
@@ -303,7 +310,7 @@ export default function DashboardScreen() {
                 <p className="text-xs font-semibold text-ink-muted mb-2">Weekly Status</p>
                 <p className={`text-sm font-medium ${weeklyDeficitColor} leading-relaxed`}>
                   You are in a weekly <span className="font-bold">{isDeficit ? 'deficit' : isSurplus ? 'surplus' : 'maintenance'}</span> of{' '}
-                  <span className="font-bold text-base">{weeklyValue}</span> cal
+                  <span className="font-bold text-base tabular-nums">{shownWeeklyValue}</span> cal
                 </p>
               </div>
             </div>

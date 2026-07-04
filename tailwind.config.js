@@ -29,10 +29,18 @@ module.exports = {
           '0%': { opacity: '0' },
           '100%': { opacity: '1' },
         },
+        'entry-in': {
+          '0%': { opacity: '0', transform: 'translateY(6px)' },
+          '100%': { opacity: '1', transform: 'translateY(0)' },
+        },
       },
       animation: {
         'toast-in': 'toast-in 200ms ease-out',
         'fade-in': 'fade-in 200ms ease-out',
+        'entry-in': 'entry-in 200ms cubic-bezier(0.22, 1, 0.36, 1) both',
+      },
+      transitionTimingFunction: {
+        spring: 'cubic-bezier(0.34, 1.56, 0.64, 1)',
       },
     },
   },

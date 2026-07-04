@@ -49,7 +49,7 @@ export default function MacroTable({ entries, onDeleteEntry, onDuplicateEntry }:
             </thead>
             <tbody>
               {entries.map((entry) => (
-                <tr key={entry.id} className="border-b border-line/60 last:border-b-0 hover:bg-paper-inset/50 transition-colors animate-fade-in">
+                <tr key={entry.id} className="border-b border-line/60 last:border-b-0 hover:bg-paper-inset/50 transition-colors animate-entry-in">
                   <td className="py-3 px-3">
                     <div className="font-medium text-ink text-sm">{entry.name}</div>
                   </td>

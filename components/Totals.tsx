@@ -5,6 +5,7 @@
 
 import React from 'react';
 import { tokens } from '@/lib/design-tokens';
+import { useCountUp } from '@/utils/use-count-up';
 import type { FoodEntry } from '@/types';
 
 interface TotalsProps {
@@ -34,6 +35,12 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
 
   const caloriePercentage = targetCalories > 0 ? Math.min((totals.calories / targetCalories) * 100, 100) : 0;
   const proteinPercentage = targetProtein > 0 ? Math.min((totals.protein / targetProtein) * 100, 100) : 0;
+
+  // Display-only animated values (logic above always uses the real totals)
+  const shownCalories = useCountUp(Math.round(totals.calories));
+  const shownProtein = useCountUp(Math.round(totals.protein * 10) / 10, { decimals: 1 });
+  const shownCaloriePct = useCountUp(Math.round(caloriePercentage));
+  const shownProteinPct = useCountUp(Math.round(proteinPercentage));
 
   // SVG donut chart settings
   const size = 60;
@@ -124,12 +131,12 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs font-bold text-ink tabular-nums">{Math.round(caloriePercentage)}%</span>
+            <span className="text-xs font-bold text-ink tabular-nums">{shownCaloriePct}%</span>
           </div>
         </div>
         <div>
           <div className="text-xs text-ink-muted font-medium">Calories</div>
-          <div className="text-lg font-semibold tracking-tight tabular-nums leading-tight text-ink">{Math.round(totals.calories)}</div>
+          <div className="text-lg font-semibold tracking-tight tabular-nums leading-tight text-ink">{shownCalories}</div>
           <div className="text-xs text-ink-muted tabular-nums">of {targetCalories}</div>
         </div>
       </div>
@@ -162,12 +169,12 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
             />
           </svg>
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-xs font-bold text-ink tabular-nums">{Math.round(proteinPercentage)}%</span>
+            <span className="text-xs font-bold text-ink tabular-nums">{shownProteinPct}%</span>
           </div>
         </div>
         <div>
           <div className="text-xs text-ink-muted font-medium">Protein</div>
-          <div className="text-lg font-semibold tracking-tight tabular-nums leading-tight text-ink">{Math.round(totals.protein * 10) / 10}g</div>
+          <div className="text-lg font-semibold tracking-tight tabular-nums leading-tight text-ink">{shownProtein}g</div>
           <div className="text-xs text-ink-muted tabular-nums">of {targetProtein}g</div>
         </div>
       </div>
