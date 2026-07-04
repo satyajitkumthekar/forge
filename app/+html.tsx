@@ -17,14 +17,14 @@ export default function Root({ children }: { children: React.ReactNode }) {
 
         {/* PWA Configuration */}
         <link rel="manifest" href="/manifest.json" />
-        <meta name="theme-color" content="#000000" />
+        <meta name="theme-color" content="#FAF9F6" />
 
         {/* Apple Touch Icons */}
         <link rel="apple-touch-icon" href="/icon-180.png" />
 
         {/* iOS PWA Support */}
         <meta name="apple-mobile-web-app-capable" content="yes" />
-        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="Forge" />
 
         {/* Android PWA Support */}
@@ -45,12 +45,9 @@ export default function Root({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Light-only app: keep the eggshell base even on dark-mode devices so the
+// launch never flashes black
 const responsiveBackground = `
 body {
-  background-color: #fff;
-}
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #000;
-  }
+  background-color: #FAF9F6;
 }`;
