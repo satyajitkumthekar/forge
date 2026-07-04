@@ -33,7 +33,7 @@ export default function WaitlistScreen() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center">
+      <div className="min-h-[calc(100dvh-var(--safe-top))] bg-paper flex items-center justify-center">
         <div className="flex items-center gap-2 text-ink-faint">
           <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -48,7 +48,7 @@ export default function WaitlistScreen() {
   // Position couldn't be loaded — never render "#undefined" to a prospect
   if (!positionInfo) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center px-6">
+      <div className="min-h-[calc(100dvh-var(--safe-top))] bg-paper flex items-center justify-center px-6">
         <div className="w-full max-w-sm bg-paper-raised rounded-card border border-line shadow-card p-6 text-center">
           <div className="text-4xl mb-4">🚀</div>
           <h1 className="text-xl font-semibold tracking-tight text-ink mb-2">You&apos;re on the list!</h1>
@@ -64,7 +64,7 @@ export default function WaitlistScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center px-6 py-10">
+    <div className="min-h-[calc(100dvh-var(--safe-top))] bg-paper flex items-center justify-center px-6 py-10">
       <div className="w-full max-w-md text-center animate-fade-in">
         <div className="text-5xl mb-6">🚀</div>
 

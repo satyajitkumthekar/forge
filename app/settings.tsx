@@ -115,7 +115,7 @@ export default function SettingsScreen() {
 
   if (loadError) {
     return (
-      <div className="flex items-center justify-center h-screen bg-paper p-6">
+      <div className="flex items-center justify-center h-[calc(100dvh-var(--safe-top))] bg-paper p-6">
         <div className="max-w-sm w-full bg-paper-raised rounded-card border border-line p-6 shadow-card text-center">
           <p className="text-sm font-semibold text-ink mb-1">Couldn&apos;t load settings</p>
           <p className="text-xs text-ink-muted mb-4">Check your connection and try again.</p>
@@ -134,7 +134,7 @@ export default function SettingsScreen() {
 
   if (loading || !settings || !rateLimitStatus) {
     return (
-      <div className="flex items-center justify-center h-screen bg-paper">
+      <div className="flex items-center justify-center h-[calc(100dvh-var(--safe-top))] bg-paper">
         <div className="flex items-center gap-2 text-ink-faint">
           <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -153,7 +153,7 @@ export default function SettingsScreen() {
   ];
 
   return (
-    <div className="flex flex-col h-screen bg-paper">
+    <div className="flex flex-col h-[calc(100dvh-var(--safe-top))] bg-paper">
       {/* Header */}
       <div className="bg-paper-raised border-b border-line px-4 md:px-6 lg:px-8 py-4">
         <div className="max-w-3xl mx-auto">

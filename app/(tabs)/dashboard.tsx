@@ -111,7 +111,7 @@ export default function DashboardScreen() {
 
   if (loadError && (!settings || !stats)) {
     return (
-      <div className="flex items-center justify-center h-screen bg-paper p-6">
+      <div className="flex items-center justify-center h-[calc(100dvh-var(--safe-top))] bg-paper p-6">
         <div className="max-w-sm w-full bg-paper-raised rounded-card border border-line p-6 shadow-card text-center">
           <p className="text-sm font-semibold text-ink mb-1">Couldn&apos;t load your dashboard</p>
           <p className="text-xs text-ink-muted mb-4">Check your connection and try again.</p>
@@ -129,7 +129,7 @@ export default function DashboardScreen() {
   // Full-screen spinner only on the very first paint
   if (!settings || !stats) {
     return (
-      <div className="flex items-center justify-center h-screen bg-paper">
+      <div className="flex items-center justify-center h-[calc(100dvh-var(--safe-top))] bg-paper">
         <div className="flex items-center gap-2 text-ink-faint">
           <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
@@ -208,7 +208,7 @@ export default function DashboardScreen() {
   }
 
   return (
-    <div className="h-screen overflow-y-auto bg-paper p-3 md:p-4">
+    <div className="h-[calc(100dvh-var(--safe-top))] overflow-y-auto bg-paper p-3 md:p-4">
       <div className="max-w-7xl mx-auto space-y-4">
         {/* Week Navigation */}
         <div className="bg-paper-raised rounded-card border border-line p-4 shadow-card">

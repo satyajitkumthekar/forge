@@ -55,7 +55,7 @@ export default function SignUpScreen() {
 
   if (success) {
     return (
-      <div className="min-h-screen bg-paper flex items-center justify-center px-6 py-10">
+      <div className="min-h-[calc(100dvh-var(--safe-top))] bg-paper flex items-center justify-center px-6 py-10">
         <div className="w-full max-w-sm bg-paper-raised rounded-card border border-line shadow-card p-6 text-center animate-fade-in">
           <div className="w-16 h-16 mx-auto mb-4 bg-accent-50 rounded-full flex items-center justify-center">
             <svg className="w-8 h-8 text-accent-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -75,7 +75,7 @@ export default function SignUpScreen() {
   }
 
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center px-6 py-10">
+    <div className="min-h-[calc(100dvh-var(--safe-top))] bg-paper flex items-center justify-center px-6 py-10">
       <div className="w-full max-w-sm">
         {/* Logo / Title */}
         <div className="flex flex-col items-center mb-8">

@@ -543,7 +543,7 @@ export default function AnalyticsScreen() {
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-screen bg-paper p-12">
+      <div className="flex items-center justify-center h-[calc(100dvh-var(--safe-top))] bg-paper p-12">
         <div className="max-w-md bg-paper-raised rounded-card border border-danger-soft p-6 shadow-card">
           <div className="flex items-start gap-3">
             <svg className="w-6 h-6 text-danger flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -564,7 +564,7 @@ export default function AnalyticsScreen() {
 
   if (loading || !summary || !dailyMetrics) {
     return (
-      <div className="h-screen overflow-y-auto bg-paper p-3 md:p-4">
+      <div className="h-[calc(100dvh-var(--safe-top))] overflow-y-auto bg-paper p-3 md:p-4">
         <div className="max-w-7xl mx-auto">
           {/* Stat tiles skeleton */}
           <div className="grid grid-cols-3 gap-3 mt-4">
@@ -622,7 +622,7 @@ export default function AnalyticsScreen() {
   );
 
   return (
-    <div className="h-screen overflow-y-auto bg-paper p-3 md:p-4">
+    <div className="h-[calc(100dvh-var(--safe-top))] overflow-y-auto bg-paper p-3 md:p-4">
       <div className="max-w-7xl mx-auto animate-fade-in">
         {/* Sticky frosted header */}
         <div className="sticky top-0 z-30 -mx-3 md:-mx-4 px-4 md:px-6 py-3 bg-paper/85 backdrop-blur-md border-b border-line/70 flex items-center justify-between">

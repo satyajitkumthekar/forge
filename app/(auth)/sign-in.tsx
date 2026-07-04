@@ -54,7 +54,7 @@ export default function SignInScreen() {
   };
 
   return (
-    <div className="min-h-screen bg-paper flex items-center justify-center px-6 py-10">
+    <div className="min-h-[calc(100dvh-var(--safe-top))] bg-paper flex items-center justify-center px-6 py-10">
       <div className="w-full max-w-sm">
         {/* Logo / Title */}
         <div className="flex flex-col items-center mb-8">

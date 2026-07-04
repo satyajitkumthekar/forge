@@ -376,7 +376,7 @@ export default function TrackScreen() {
     <div
       className="flex flex-col relative"
       style={{
-        minHeight: '100dvh',
+        minHeight: 'calc(100dvh - var(--safe-top))',
         WebkitOverflowScrolling: 'touch',
         background: backgroundGradient
       }}

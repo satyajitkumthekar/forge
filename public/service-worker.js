@@ -3,8 +3,8 @@
  * Implements caching strategies for offline support with proper error handling
  */
 
-const CACHE_NAME = 'forge-cache-v3';
-const RUNTIME_CACHE = 'forge-runtime-v3';
+const CACHE_NAME = 'forge-cache-v4';
+const RUNTIME_CACHE = 'forge-runtime-v4';
 const OFFLINE_URL = '/offline.html';
 
 // Files to cache immediately on install
