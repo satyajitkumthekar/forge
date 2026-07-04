@@ -223,4 +223,5 @@ export const CACHE_KEYS = {
   frequentItems: 'frequent_items',
   offlineQueue: 'offline_queue',
   accountType: 'account_type',
+  meals: 'meals',
 };

@@ -231,7 +231,38 @@ API call tracking for analytics
 
 ---
 
-### 6. `system_settings`
+### 6a. `meals` (added July 2026 — My Meals feature)
+Saved meal definitions (named groups of food items)
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| id | UUID | gen_random_uuid() | Primary key |
+| user_id | UUID | - | FK to auth.users |
+| name | TEXT | - | Meal name |
+| created_at | TIMESTAMPTZ | NOW() | - |
+| updated_at | TIMESTAMPTZ | NOW() | Auto-updated |
+
+### 6b. `meal_items`
+Component items of a saved meal (snapshot; editable via meal edit)
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| id | UUID | gen_random_uuid() | Primary key |
+| meal_id | UUID | - | FK to meals (CASCADE) |
+| user_id | UUID | - | FK to auth.users (RLS) |
+| name | TEXT | - | Item name |
+| calories | INTEGER | - | - |
+| protein | NUMERIC(5,1) | - | - |
+| description | TEXT | NULL | - |
+| position | INTEGER | 0 | Display order |
+
+**Also:** `food_entries.meal_id UUID NULL REFERENCES meals(id) ON DELETE SET NULL` — entries added via a meal are stamped so Quick Add can collapse them into one meal chip. Deleting a meal keeps entry history (stamp nulls out).
+
+RLS: both tables have the four standard `(select auth.uid()) = user_id` policies. Indexes: meals(user_id), meal_items(meal_id), meal_items(user_id), partial food_entries(meal_id).
+
+---
+
+### 7. `system_settings`
 Global app configuration (single row)
 
 | Column | Type | Constraint | Notes |

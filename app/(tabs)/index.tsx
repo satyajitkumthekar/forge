@@ -4,9 +4,10 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { Link } from 'expo-router';
-import { db } from '@/lib/database';
+import { Link, useFocusEffect } from 'expo-router';
+import { db, type FoodItemInput } from '@/lib/database';
 import { getCached, setCached, invalidate, CACHE_KEYS } from '@/lib/enhanced-cache';
+import { toast } from '@/lib/toast';
 import { queueOperation, processQueue, checkOnlineStatus } from '@/utils/offline-queue';
 import { getFrequentItems } from '@/utils/frequent-items';
 import ChatInput from '@/components/ChatInput';
@@ -17,7 +18,7 @@ import { appToday, todayLocal, addDaysYMD, maxNavigableDate, formatDisplayDate, 
 import { tokens } from '@/lib/design-tokens';
 import Card from '@/components/ui/Card';
 import { SkeletonRow, SkeletonDonut } from '@/components/ui/Skeleton';
-import type { FoodEntry, UserSettings, FrequentItem } from '@/types';
+import type { FoodEntry, UserSettings, FrequentItem, Meal } from '@/types';
 
 // Note: CACHE_KEYS now imported from enhanced-cache for consistency
 
@@ -36,7 +37,10 @@ export default function TrackScreen() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [frequentItems, setFrequentItems] = useState<FrequentItem[]>([]);
+  const [meals, setMeals] = useState<Meal[]>([]);
   const [dataVersion, setDataVersion] = useState(0);
+  // Bumped on tab focus so returning to Track revalidates via the SWR path
+  const [focusVersion, setFocusVersion] = useState(0);
   // Coach reminder loaded for future use
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [coachReminder, setCoachReminder] = useState<string | null>(null);
@@ -44,6 +48,19 @@ export default function TrackScreen() {
   // Monotonic sequence guard: bumping it invalidates any in-flight background
   // load, so stale revalidations can never overwrite newer data or mutations
   const loadSeqRef = React.useRef(0);
+
+  // Revalidate on tab focus (e.g. after adding a meal in the Meals tab).
+  // The first focus fires on mount, which the load effects already cover.
+  const isFirstFocusRef = React.useRef(true);
+  useFocusEffect(
+    React.useCallback(() => {
+      if (isFirstFocusRef.current) {
+        isFirstFocusRef.current = false;
+        return;
+      }
+      setFocusVersion((prev) => prev + 1);
+    }, [])
+  );
 
   // Process offline queue on mount
   useEffect(() => {
@@ -54,15 +71,27 @@ export default function TrackScreen() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Load frequent items when data changes
+  // Load frequent items (and saved meals for meal chips) when data changes
   useEffect(() => {
     const loadFrequentItems = async () => {
       try {
         const endDate = todayLocal();
         const startDate = addDaysYMD(endDate, -7);
 
+        // Meals: cache-first so chips resolve instantly, then revalidate
+        const cachedMeals = getCached<Meal[]>(CACHE_KEYS.meals);
+        if (cachedMeals !== null) {
+          setMeals(cachedMeals);
+        }
+
         // Use database abstraction
-        const allData = await db.food.getRange(startDate, endDate);
+        const [allData, freshMeals] = await Promise.all([
+          db.food.getRange(startDate, endDate),
+          db.meals.list(),
+        ]);
+
+        setCached(CACHE_KEYS.meals, freshMeals);
+        setMeals(freshMeals);
 
         // Group entries by date for frequent items algorithm
         const groupedData: Record<string, FoodEntry[]> = {};
@@ -73,7 +102,7 @@ export default function TrackScreen() {
           groupedData[entry.entry_date].push(entry);
         }
 
-        const frequent = getFrequentItems(groupedData);
+        const frequent = getFrequentItems(groupedData, freshMeals);
         setFrequentItems(frequent);
       } catch (err) {
         console.error('Error loading frequent items:', err);
@@ -81,7 +110,7 @@ export default function TrackScreen() {
     };
 
     loadFrequentItems();
-  }, [dataVersion]);
+  }, [dataVersion, focusVersion]);
 
   // Load entries and settings (Stale-While-Revalidate pattern with L1/L2 cache)
   useEffect(() => {
@@ -153,7 +182,7 @@ export default function TrackScreen() {
     return () => {
       isMounted = false;
     };
-  }, [currentDate]);
+  }, [currentDate, focusVersion]);
 
   const handleFoodLogged = async (foodData: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>) => {
     // Invalidate any in-flight background load; this mutation owns the final state
@@ -227,6 +256,109 @@ export default function TrackScreen() {
     }
   };
 
+  const handleMealAdd = async (meal: Meal) => {
+    // Invalidate any in-flight background load; this mutation owns the final state
+    loadSeqRef.current++;
+
+    // Captured before the optimistic update so a failed add rolls back to
+    // exactly what was showing (not a stale closure re-read after awaits)
+    const originalEntries = entries;
+
+    try {
+      // Optimistic update: append ALL of the meal's items as temp entries
+      const now = Date.now();
+      const tempEntries: FoodEntry[] = meal.items.map((item, i) => ({
+        id: `temp_${now}_${i}_${Math.random().toString(36).substring(2, 11)}`,
+        entry_date: currentDate,
+        name: item.name,
+        calories: item.calories,
+        protein: item.protein,
+        description: item.description ?? undefined,
+        created_at: new Date().toISOString(),
+        user_id: settings.user_id,
+        meal_id: meal.id,
+      }));
+
+      // Update UI immediately
+      const optimisticEntries = [...entries, ...tempEntries];
+      setEntries(optimisticEntries);
+
+      const cacheKey = CACHE_KEYS.entries(currentDate);
+      setCached(cacheKey, optimisticEntries);
+
+      const items: FoodItemInput[] = meal.items.map(({ name, calories, protein, description }) => ({
+        name,
+        calories,
+        protein,
+        description,
+      }));
+
+      // Check if online
+      const isOnline = checkOnlineStatus();
+
+      if (!isOnline) {
+        await queueOperation({
+          type: 'add_meal',
+          date: currentDate,
+          items,
+          mealId: meal.id,
+        });
+        setError('Offline: Meal saved and will sync when online.');
+        setTimeout(() => setError(''), 3000);
+        return;
+      }
+
+      try {
+        // Make API call using abstraction
+        await db.food.addMany(currentDate, items, meal.id);
+
+        // Reload fresh data and update cache
+        const updatedEntries = await db.food.getByDate(currentDate);
+        setEntries(updatedEntries);
+        setCached(cacheKey, updatedEntries);
+        setDataVersion((prev) => prev + 1);
+
+        toast.success(`${meal.name} added · ${meal.items.length} items`);
+
+      } catch (err) {
+        console.error('Error adding meal:', err);
+
+        if (!checkOnlineStatus()) {
+          await queueOperation({
+            type: 'add_meal',
+            date: currentDate,
+            items,
+            mealId: meal.id,
+          });
+          setError('Connection lost: Meal saved and will sync when online.');
+        } else {
+          setError('Failed to add meal. Please try again.');
+          setEntries(originalEntries);
+          setCached(cacheKey, originalEntries);
+        }
+      }
+    } catch (err) {
+      // Catch any unexpected errors
+      console.error('Unexpected error in handleMealAdd:', err);
+    }
+  };
+
+  const handleSaveAsMeal = async (name: string, items: FoodItemInput[]) => {
+    try {
+      await db.meals.create(name, items);
+
+      // Refresh the meals cache so Quick Add and the Meals tab pick it up
+      const freshMeals = await db.meals.list();
+      setCached(CACHE_KEYS.meals, freshMeals);
+      setMeals(freshMeals);
+
+      toast.success('Meal saved — find it in the Meals tab');
+    } catch (err) {
+      console.error('Error saving meal:', err);
+      toast.error('Could not save meal. Please try again.');
+    }
+  };
+
   const handleDeleteEntry = async (entryId: string) => {
     // Invalidate any in-flight background load; this mutation owns the final state
     loadSeqRef.current++;
@@ -295,7 +427,14 @@ export default function TrackScreen() {
   };
 
   const handleFrequentItemClick = async (item: FrequentItem) => {
-    const { count, ...foodData } = item;
+    // Meal chips re-add the whole saved meal in one tap
+    if (item.type === 'meal' && item.mealId) {
+      const meal = meals.find((m) => m.id === item.mealId);
+      if (meal) await handleMealAdd(meal);
+      return;
+    }
+
+    const { count, type, mealId, itemCount, ...foodData } = item;
     await handleFoodLogged(foodData);
   };
 
@@ -506,6 +645,7 @@ export default function TrackScreen() {
               entries={entries}
               onDeleteEntry={handleDeleteEntry}
               onDuplicateEntry={handleDuplicateEntry}
+              onSaveAsMeal={handleSaveAsMeal}
             />
           )}
 

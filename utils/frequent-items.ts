@@ -3,7 +3,7 @@
  * ABSTRACTION: Find most frequently logged foods with smart grouping
  */
 
-import type { FoodEntry, FrequentItem } from '../types';
+import type { FoodEntry, FrequentItem, Meal } from '../types';
 
 const COMMON_WORDS = new Set([
   'a', 'an', 'the', 'of', 'with', 'and', 'or', 'in', 'on', 'at', 'to', 'for',
@@ -40,13 +40,51 @@ const areNutritionallySimilar = (
 
 export const getFrequentItems = (
   allData: Record<string, FoodEntry[]>,
+  meals: Meal[] = [],
   minOccurrences: number = 2,
   maxItems: number = 8,
   similarityThreshold: number = 0.6
 ): FrequentItem[] => {
-  const allEntries: FoodEntry[] = Object.values(allData).flat();
+  const rawEntries: FoodEntry[] = Object.values(allData).flat();
 
-  if (allEntries.length === 0) return [];
+  if (rawEntries.length === 0) return [];
+
+  const mealsById = new Map(meals.map((meal) => [meal.id, meal]));
+
+  // PARTITION: entries stamped with a known meal_id collapse into ONE meal
+  // chip per meal — never shown as their component items. Entries whose meal
+  // no longer exists fall through to the individual algorithm.
+  const mealOccurrences = new Map<string, Set<string>>(); // mealId -> distinct entry dates
+  const allEntries: FoodEntry[] = [];
+
+  for (const entry of rawEntries) {
+    if (entry.meal_id && mealsById.has(entry.meal_id)) {
+      let dates = mealOccurrences.get(entry.meal_id);
+      if (!dates) {
+        dates = new Set<string>();
+        mealOccurrences.set(entry.meal_id, dates);
+      }
+      dates.add(entry.entry_date);
+    } else {
+      allEntries.push(entry);
+    }
+  }
+
+  const mealChips: FrequentItem[] = [];
+  for (const [mealId, dates] of mealOccurrences) {
+    if (dates.size < minOccurrences) continue;
+    const meal = mealsById.get(mealId)!;
+    mealChips.push({
+      type: 'meal',
+      mealId,
+      name: meal.name,
+      // Totals reflect the meal's CURRENT definition, so edits propagate
+      calories: meal.items.reduce((sum, item) => sum + item.calories, 0),
+      protein: Math.round(meal.items.reduce((sum, item) => sum + item.protein, 0) * 10) / 10,
+      itemCount: meal.items.length,
+      count: dates.size,
+    });
+  }
 
   // Group similar items
   const groups: FoodEntry[][] = [];
@@ -85,6 +123,7 @@ export const getFrequentItems = (
       );
 
       return {
+        type: 'item' as const,
         name: representative.name,
         calories: avgCalories,
         protein: avgProtein,
@@ -92,9 +131,10 @@ export const getFrequentItems = (
         description: representative.description,
         count: group.length,
       };
-    })
+    });
+
+  // Meals and individual items compete on equal footing by frequency
+  return [...mealChips, ...frequentGroups]
     .sort((a, b) => b.count - a.count)
     .slice(0, maxItems);
-
-  return frequentGroups;
 };

@@ -29,6 +29,12 @@ const DashboardIcon = ({ color }: { color: string }) => (
   </Svg>
 );
 
+const MealsIcon = ({ color }: { color: string }) => (
+  <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+    <Path d="M11.99 18.54l-7.37-5.73L3 14.07l9 7 9-7-1.63-1.27-7.38 5.74zM12 16l7.36-5.73L21 9l-9-7-9 7 1.63 1.27L12 16z" fill={color} />
+  </Svg>
+);
+
 const CoachIcon = ({ color }: { color: string }) => (
   <Svg width="24" height="24" viewBox="0 0 24 24" fill="none">
     <Path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-3 9h-2v2h-2v-2H9V9h2V7h2v2h4v2z" fill={color} />
@@ -127,6 +133,14 @@ export default function TabLayout() {
         options={{
           title: 'Dashboard',
           tabBarIcon: ({ color }) => <DashboardIcon color={color} />,
+          headerRight: getHeaderRight,
+        }}
+      />
+      <Tabs.Screen
+        name="meals"
+        options={{
+          title: 'Meals',
+          tabBarIcon: ({ color }) => <MealsIcon color={color} />,
           headerRight: getHeaderRight,
         }}
       />

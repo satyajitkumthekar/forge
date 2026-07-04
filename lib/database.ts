@@ -14,7 +14,16 @@ import type {
   DailyMetrics,
   UserMetric,
   CoachAnalyticsRow,
+  Meal,
 } from '../types';
+
+/** Input shape for meal items and batch entry inserts */
+export interface FoodItemInput {
+  name: string;
+  calories: number;
+  protein: number;
+  description?: string | null;
+}
 
 import { appToday, formatYMD } from '../utils/date';
 
@@ -79,11 +88,150 @@ export const db = {
     },
 
     /**
+     * Batch-insert entries for a date. When mealId is set (adding a saved
+     * meal), every row is stamped so Quick Add can collapse them into one
+     * meal chip. Entries remain individual rows — editable/deletable alone.
+     */
+    addMany: async (date: string, items: FoodItemInput[], mealId?: string): Promise<FoodEntry[]> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const rows = items.map((item) => ({
+        entry_date: date,
+        user_id: user.id,
+        name: item.name,
+        calories: item.calories,
+        protein: item.protein,
+        description: item.description ?? null,
+        meal_id: mealId ?? null,
+      }));
+
+      const { data, error } = await supabase
+        .from('food_entries')
+        .insert(rows)
+        .select();
+
+      if (error) throw error;
+      return data || [];
+    },
+
+    /**
      * Delete a food entry
      */
     delete: async (id: string): Promise<void> => {
       const { error } = await supabase
         .from('food_entries')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+  },
+
+  // ============================================
+  // MEALS (saved groups of food items)
+  // ============================================
+  meals: {
+    /**
+     * Get all of the user's meals with their items (items in position order)
+     */
+    list: async (): Promise<Meal[]> => {
+      const { data, error } = await supabase
+        .from('meals')
+        .select('*, items:meal_items(*)')
+        .order('created_at', { ascending: false })
+        .order('position', { referencedTable: 'meal_items', ascending: true });
+
+      if (error) throw error;
+      return (data as Meal[]) || [];
+    },
+
+    /**
+     * Create a meal from a list of items
+     */
+    create: async (name: string, items: FoodItemInput[]): Promise<Meal> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: meal, error } = await supabase
+        .from('meals')
+        .insert({ user_id: user.id, name })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const { data: mealItems, error: itemsError } = await supabase
+        .from('meal_items')
+        .insert(items.map((item, index) => ({
+          meal_id: meal.id,
+          user_id: user.id,
+          name: item.name,
+          calories: item.calories,
+          protein: item.protein,
+          description: item.description ?? null,
+          position: index,
+        })))
+        .select();
+
+      if (itemsError) {
+        // Don't leave an empty meal behind if items failed to insert
+        await supabase.from('meals').delete().eq('id', meal.id);
+        throw itemsError;
+      }
+
+      return { ...meal, items: mealItems || [] };
+    },
+
+    /**
+     * Update a meal's name and replace its items.
+     * Past logged entries keep their snapshot; only future adds change.
+     */
+    update: async (id: string, name: string, items: FoodItemInput[]): Promise<Meal> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: meal, error } = await supabase
+        .from('meals')
+        .update({ name })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      const { error: deleteError } = await supabase
+        .from('meal_items')
+        .delete()
+        .eq('meal_id', id);
+
+      if (deleteError) throw deleteError;
+
+      const { data: mealItems, error: itemsError } = await supabase
+        .from('meal_items')
+        .insert(items.map((item, index) => ({
+          meal_id: id,
+          user_id: user.id,
+          name: item.name,
+          calories: item.calories,
+          protein: item.protein,
+          description: item.description ?? null,
+          position: index,
+        })))
+        .select();
+
+      if (itemsError) throw itemsError;
+
+      return { ...meal, items: mealItems || [] };
+    },
+
+    /**
+     * Delete a meal. Logged history is preserved: food_entries.meal_id
+     * nulls out via ON DELETE SET NULL.
+     */
+    remove: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .from('meals')
         .delete()
         .eq('id', id);
 

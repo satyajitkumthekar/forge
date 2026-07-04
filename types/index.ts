@@ -10,6 +10,26 @@ export interface FoodEntry {
   description?: string;
   created_at: string;
   user_id: string;
+  /** Set when the entry was logged via a saved meal (see Meal) */
+  meal_id?: string | null;
+}
+
+export interface MealItem {
+  id: string;
+  meal_id: string;
+  name: string;
+  calories: number;
+  protein: number;
+  description?: string | null;
+  position: number;
+}
+
+export interface Meal {
+  id: string;
+  user_id: string;
+  name: string;
+  created_at: string;
+  items: MealItem[];
 }
 
 export interface UserSettings {
@@ -71,6 +91,10 @@ export interface DayData {
 
 export interface FrequentItem extends Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'> {
   count: number;
+  /** 'meal' chips re-add a whole saved meal; 'item' (default) a single food */
+  type?: 'item' | 'meal';
+  mealId?: string;
+  itemCount?: number;
 }
 
 export type AccountType = 'basic' | 'pro' | 'admin';
