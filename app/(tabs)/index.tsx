@@ -60,6 +60,10 @@ export default function TrackScreen() {
   // load, so stale revalidations can never overwrite newer data or mutations
   const loadSeqRef = React.useRef(0);
 
+  // Silent timezone capture: sync the device timezone to user_settings once
+  // per session so the admin panel can show log times in the client's clock
+  const tzSyncedRef = React.useRef(false);
+
   // Revalidate on tab focus (e.g. after adding a meal in the Meals tab).
   // The first focus fires on mount, which the load effects already cover.
   const isFirstFocusRef = React.useRef(true);
@@ -189,6 +193,19 @@ export default function TrackScreen() {
         setSettings(freshSettings);
         setCoachReminder(reminder);
         setLoading(false);
+
+        // Fire-and-forget timezone sync (once per session, only on change)
+        if (!tzSyncedRef.current) {
+          tzSyncedRef.current = true;
+          try {
+            const deviceTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+            if (deviceTz && freshSettings.timezone !== deviceTz) {
+              db.settings.update({ timezone: deviceTz }).catch(() => {});
+            }
+          } catch {
+            // Intl unavailable — skip silently
+          }
+        }
 
       } catch (err: any) {
         // Handle authentication errors silently (user will be redirected)

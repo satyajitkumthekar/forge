@@ -40,6 +40,8 @@ export interface UserSettings {
   target_protein: number;
   created_at: string;
   updated_at: string;
+  /** IANA timezone captured silently from the client's device */
+  timezone?: string | null;
 }
 
 export interface User {
@@ -131,6 +133,7 @@ export interface UserMetric {
   target_calories: number;
   target_protein: number;
   coach_reminder: string | null;
+  timezone?: string | null;
 }
 
 export interface DailyNutrition {

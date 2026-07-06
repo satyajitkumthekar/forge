@@ -15,7 +15,7 @@ import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { getWeekStart, formatWeekRange, getWeeklyStats } from '@/utils/weekly-stats';
 import { appToday } from '@/utils/date';
 import { format, addDays } from 'date-fns';
-import { formatDate, getTierColor } from '@/components/admin/helpers';
+import { formatDate, formatLogTime24, getTierColor } from '@/components/admin/helpers';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { Skeleton, SkeletonRow, SkeletonStat } from '@/components/ui/Skeleton';
@@ -500,10 +500,11 @@ export default function AnalyticsScreen() {
       const today = getTodayDate();
       const filteredEntries = userEntries.filter(entry => entry.entry_date !== today);
 
-      // Format entries for AI with timestamps
+      // Format entries for AI with timestamps in the CLIENT's local clock
+      const clientTimezone = userMetrics.find(u => u.user_id === userId)?.timezone;
       const weekEntries = filteredEntries.map(entry => ({
         date: entry.entry_date,
-        time: format(new Date(entry.created_at), 'HH:mm'),
+        time: formatLogTime24(entry.created_at, clientTimezone),
         food: entry.description || entry.name,
         calories: entry.calories,
         protein: entry.protein
@@ -888,6 +889,7 @@ export default function AnalyticsScreen() {
               onToggleExpand={toggleExpand}
               onUpdateViewMode={updateViewMode}
               onRefreshCoaching={handleRefreshCoaching}
+              getTimezone={(userId) => userMetrics.find(u => u.user_id === userId)?.timezone}
             />
           )}
         </div>

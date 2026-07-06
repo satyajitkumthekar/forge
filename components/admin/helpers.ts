@@ -21,10 +21,38 @@ export const formatDateTime = (dateString: string | null) => {
   });
 };
 
-export const formatLogTime = (dateString: string) => {
+/**
+ * Time of a log. Pass the client's IANA timezone to show THEIR clock
+ * (the time at which they actually ate); falls back to the viewer's
+ * local time when the timezone is unknown or invalid.
+ */
+export const formatLogTime = (dateString: string, timeZone?: string | null) => {
   const date = new Date(dateString);
   if (isNaN(date.getTime())) return '';
-  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const options: Intl.DateTimeFormatOptions = { hour: 'numeric', minute: '2-digit' };
+  if (timeZone) {
+    try {
+      return date.toLocaleTimeString('en-US', { ...options, timeZone });
+    } catch {
+      // Invalid timezone string — fall through to viewer-local
+    }
+  }
+  return date.toLocaleTimeString('en-US', options);
+};
+
+/** 24h variant ("19:04") used for the AI coaching payload */
+export const formatLogTime24 = (dateString: string, timeZone?: string | null) => {
+  const date = new Date(dateString);
+  if (isNaN(date.getTime())) return '';
+  const options: Intl.DateTimeFormatOptions = { hour: '2-digit', minute: '2-digit', hour12: false };
+  if (timeZone) {
+    try {
+      return date.toLocaleTimeString('en-GB', { ...options, timeZone });
+    } catch {
+      // Invalid timezone string — fall through to viewer-local
+    }
+  }
+  return date.toLocaleTimeString('en-GB', options);
 };
 
 // Gap between two consecutive logs, e.g. "3h 15m"; null if under a minute or invalid

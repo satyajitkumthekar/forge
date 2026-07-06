@@ -26,6 +26,8 @@ interface CoachTableProps {
   onToggleExpand: (userId: string) => void;
   onUpdateViewMode: (userId: string, mode: 'table' | 'log' | 'coaching') => void;
   onRefreshCoaching: (userId: string) => void;
+  /** Client timezone lookup — timelines render log times in the client's clock */
+  getTimezone?: (userId: string) => string | null | undefined;
 }
 
 const headerCellClass =
@@ -43,6 +45,7 @@ export default function CoachTable({
   onToggleExpand,
   onUpdateViewMode,
   onRefreshCoaching,
+  getTimezone,
 }: CoachTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -200,6 +203,7 @@ export default function CoachTable({
                                       targetCalories={user.target_calories}
                                       targetProtein={user.target_protein}
                                       maintenanceCalories={user.maintenance_calories}
+                                      timezone={getTimezone?.(user.user_id)}
                                     />
                                   );
                                 })}

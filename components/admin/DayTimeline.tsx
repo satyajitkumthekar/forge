@@ -22,6 +22,8 @@ interface DayTimelineProps {
   targetCalories: number;
   targetProtein: number;
   maintenanceCalories: number;
+  /** Client's IANA timezone — log times render in THEIR clock */
+  timezone?: string | null;
 }
 
 export default function DayTimeline({
@@ -32,6 +34,7 @@ export default function DayTimeline({
   targetCalories,
   targetProtein,
   maintenanceCalories,
+  timezone,
 }: DayTimelineProps) {
   // Calculate totals for this day
   const totalCal = entries.reduce((sum, e) => sum + e.calories, 0);
@@ -83,7 +86,7 @@ export default function DayTimeline({
                     {viewMode === 'log' ? (entry.description || entry.name) : entry.name}
                   </div>
                   <div className="text-[10px] text-ink-faint tabular-nums shrink-0">
-                    {formatLogTime(entry.created_at)}
+                    {formatLogTime(entry.created_at, timezone)}
                   </div>
                 </div>
                 <div className="text-[11px] text-ink-muted tabular-nums">
