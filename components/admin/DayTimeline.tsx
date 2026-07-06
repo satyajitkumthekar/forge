@@ -78,7 +78,8 @@ export default function DayTimeline({
               <div className="relative py-1 animate-entry-in">
                 <span className="absolute -left-[17px] top-[7px] h-[7px] w-[7px] rounded-full border border-line-strong bg-paper-raised" />
                 <div className="flex items-baseline justify-between gap-2">
-                  <div className="text-xs font-medium text-ink truncate">
+                  {/* break-words, never truncate: the coach must see full item names */}
+                  <div className="text-xs font-medium text-ink min-w-0 flex-1 break-words">
                     {viewMode === 'log' ? (entry.description || entry.name) : entry.name}
                   </div>
                   <div className="text-[10px] text-ink-faint tabular-nums shrink-0">
