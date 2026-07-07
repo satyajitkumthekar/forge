@@ -112,14 +112,15 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
             <div className="mt-5">
               <div className={microLabel}>Ingredients</div>
               <ul className="mt-2 space-y-1.5">
+                {/* Per-ingredient macros shown to everyone: these exact
+                    numbers are what a one-tap add logs, so the document
+                    should be honest about them */}
                 {meal.ingredients.map((ing, j) => (
                   <li key={j} className="flex items-baseline justify-between gap-3 text-sm text-ink">
                     <span className="min-w-0 flex-1">· {ing.text}</span>
-                    {mode === 'preview' && (
-                      <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
-                        {ing.calories} cal · {Number(ing.protein).toFixed(0)}g
-                      </span>
-                    )}
+                    <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
+                      {ing.calories} cal · {Number(ing.protein).toFixed(0)}g
+                    </span>
                   </li>
                 ))}
               </ul>
