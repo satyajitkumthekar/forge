@@ -225,4 +225,5 @@ export const CACHE_KEYS = {
   offlineQueue: 'offline_queue',
   accountType: 'account_type',
   meals: 'meals',
+  cookbooks: 'cookbooks',
 };

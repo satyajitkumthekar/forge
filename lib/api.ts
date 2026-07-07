@@ -5,7 +5,7 @@
  */
 
 import { supabase } from './supabase';
-import type { CoachContext } from '../types';
+import type { CoachContext, AnchorCookbookContent } from '../types';
 
 /**
  * Helper function to make Supabase Function requests
@@ -134,6 +134,25 @@ export const api = {
       user_id: userId,
       week_entries: weekEntries,
       targets,
+    });
+  },
+
+  // ============================================
+  // ANCHOR COOKBOOK CONVERSION (Claude Opus 4.8)
+  // ============================================
+
+  /**
+   * Convert a coach's cookbook PDF into structured cookbook content.
+   * Admin only (enforced server-side). The PDF is read once and never
+   * stored — same philosophy as food images.
+   * @param pdfBase64 - Base64 PDF (data-URL prefix tolerated)
+   * @returns Structured cookbook content ready to save as a draft
+   */
+  convertAnchorCookbook: async (
+    pdfBase64: string
+  ): Promise<{ content: AnchorCookbookContent }> => {
+    return invokeFunction('convert-anchor-cookbook', {
+      pdf_base64: pdfBase64,
     });
   },
 };

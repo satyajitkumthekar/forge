@@ -15,6 +15,8 @@ import type {
   UserMetric,
   CoachAnalyticsRow,
   Meal,
+  AnchorCookbook,
+  AnchorCookbookContent,
 } from '../types';
 
 /** Input shape for meal items and batch entry inserts */
@@ -234,6 +236,139 @@ export const db = {
         .from('meals')
         .delete()
         .eq('id', id);
+
+      if (error) throw error;
+    },
+  },
+
+  // ============================================
+  // ANCHOR COOKBOOKS (coach-authored meal programs)
+  // ============================================
+  cookbooks: {
+    /**
+     * The signed-in client's published cookbooks, newest first.
+     * RLS enforces published-only for clients; the filters here keep the
+     * query correct for admins too (who can read every row).
+     */
+    listMine: async (): Promise<AnchorCookbook[]> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('anchor_cookbooks')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'published')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data as AnchorCookbook[]) || [];
+    },
+
+    /**
+     * All of a client's cookbooks, any status (admin only via RLS)
+     */
+    adminListForUser: async (userId: string): Promise<AnchorCookbook[]> => {
+      const { data, error } = await supabase
+        .from('anchor_cookbooks')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      return (data as AnchorCookbook[]) || [];
+    },
+
+    /**
+     * Save converted content. Null id creates a new draft cookbook;
+     * an id replaces that cookbook's content (status untouched).
+     */
+    adminSaveDraft: async (
+      id: string | null,
+      userId: string,
+      content: AnchorCookbookContent
+    ): Promise<AnchorCookbook> => {
+      if (id) {
+        const { data, error } = await supabase
+          .from('anchor_cookbooks')
+          .update({ content })
+          .eq('id', id)
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data as AnchorCookbook;
+      }
+
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('anchor_cookbooks')
+        .insert({ user_id: userId, created_by: user.id, content })
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as AnchorCookbook;
+    },
+
+    /**
+     * Rename the short label shown on cards/lists (masthead title untouched)
+     */
+    adminRename: async (cookbook: AnchorCookbook, shortTitle: string): Promise<AnchorCookbook> => {
+      const { data, error } = await supabase
+        .from('anchor_cookbooks')
+        .update({ content: { ...cookbook.content, shortTitle } })
+        .eq('id', cookbook.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as AnchorCookbook;
+    },
+
+    /**
+     * Publish: flips status and bakes the recipes into is_anchor meal
+     * presets server-side. The client's one-tap add never computes anything.
+     */
+    adminPublish: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_publish_anchor_cookbook', { p_cookbook_id: id });
+
+      if (error) throw error;
+    },
+
+    /**
+     * Unpublish: back to draft, presets removed. Logged history preserved
+     * (food_entries.meal_id nulls via FK).
+     */
+    adminUnpublish: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_unpublish_anchor_cookbook', { p_cookbook_id: id });
+
+      if (error) throw error;
+    },
+
+    /**
+     * Delete a cookbook. Its preset meals cascade away; logged history stays.
+     */
+    adminRemove: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .from('anchor_cookbooks')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+
+    /**
+     * Client marks their cookbook's reveal as seen (once, ever — DB-backed
+     * so it never re-fires across devices)
+     */
+    markRevealed: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .rpc('mark_cookbook_revealed', { p_cookbook_id: id });
 
       if (error) throw error;
     },

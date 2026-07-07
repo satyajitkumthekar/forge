@@ -26,6 +26,7 @@ import WeekSelector from '@/components/admin/WeekSelector';
 import UserActivityTable from '@/components/admin/UserActivityTable';
 import UserChips from '@/components/admin/UserChips';
 import CoachTable from '@/components/admin/CoachTable';
+import CookbookPanel from '@/components/admin/CookbookPanel';
 import type { AnalyticsSummary, DailyMetrics, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis } from '@/types';
 
 // Cache TTL: 5 minutes (analytics don't need to be real-time)
@@ -68,6 +69,9 @@ export default function AnalyticsScreen() {
   const [loadingExpanded, setLoadingExpanded] = useState<Set<string>>(new Set());
   const [coachingAnalysisData, setCoachingAnalysisData] = useState<Map<string, MealCoachingAnalysis>>(new Map());
   const [loadingCoaching, setLoadingCoaching] = useState<Set<string>>(new Set());
+
+  // Anchor-cookbook panel (full-screen takeover for one client)
+  const [cookbookUser, setCookbookUser] = useState<{ id: string; email: string } | null>(null);
 
   useEffect(() => {
     checkAdminAndLoadAnalytics();
@@ -890,10 +894,19 @@ export default function AnalyticsScreen() {
               onUpdateViewMode={updateViewMode}
               onRefreshCoaching={handleRefreshCoaching}
               getTimezone={(userId) => userMetrics.find(u => u.user_id === userId)?.timezone}
+              onOpenCookbooks={(userId, email) => setCookbookUser({ id: userId, email })}
             />
           )}
         </div>
       </div>
+
+      {cookbookUser && (
+        <CookbookPanel
+          userId={cookbookUser.id}
+          email={cookbookUser.email}
+          onClose={() => setCookbookUser(null)}
+        />
+      )}
     </div>
   );
 }

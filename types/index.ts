@@ -30,6 +30,68 @@ export interface Meal {
   name: string;
   created_at: string;
   items: MealItem[];
+  /** Coach-prescribed meal baked from an anchor cookbook (client read-only) */
+  is_anchor?: boolean;
+  cookbook_id?: string | null;
+  /** Recipe order within its cookbook; 0 for personal meals */
+  position?: number;
+}
+
+// ============================================
+// ANCHOR COOKBOOKS (coach-authored meal programs)
+// ============================================
+
+export interface CookbookIngredient {
+  /** Display line as written in the coach's document, e.g. "200g paneer, crumbled" */
+  text: string;
+  /** Estimated share of the meal's totals — becomes the logged preset row */
+  calories: number;
+  protein: number;
+}
+
+export interface CookbookMeal {
+  name: string;
+  timeMinutes: number;
+  blurb: string;
+  ingredients: CookbookIngredient[];
+  sauces: string[];
+  steps: string[];
+  /** The coach's personalized quip for this meal; empty string if none */
+  zinger: string;
+  calories: number;
+  protein: number;
+}
+
+export interface AnchorCookbookContent {
+  /** Full document masthead title, e.g. "AKSHAY'S ANCHOR MEAL COOKBOOK" */
+  title: string;
+  /** Short purpose label for cards/lists, e.g. "Anchor Meals", "Travel Edition" */
+  shortTitle: string;
+  /** Client's first name, for the byline */
+  clientName: string;
+  subtitle: string;
+  taglines: string[];
+  intro: string;
+  howItWorks: {
+    rows: Array<{ label: string; protein: number; calories: number }>;
+    footer: string;
+  };
+  meals: CookbookMeal[];
+  cheatSheetNote: string;
+  sauceGuide: { useFreely: string[]; useSparingly: string[] };
+  groceryKit: { title: string; items: string[]; note: string };
+  signoff: string;
+}
+
+export interface AnchorCookbook {
+  id: string;
+  user_id: string;
+  created_by?: string | null;
+  status: 'draft' | 'published';
+  content: AnchorCookbookContent;
+  revealed_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface UserSettings {
