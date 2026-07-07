@@ -17,12 +17,13 @@ import Totals from '@/components/Totals';
 import FrequentItems from '@/components/FrequentItems';
 import CalendarSheet from '@/components/CalendarSheet';
 import FeatureAnnouncement from '@/components/FeatureAnnouncement';
+import CookbookReveal from '@/components/cookbook/CookbookReveal';
 import { useAuth } from '@/contexts/AuthContext';
 import { appToday, todayLocal, addDaysYMD, maxNavigableDate, formatDisplayDate, parseYMD } from '@/utils/date';
 import { tokens } from '@/lib/design-tokens';
 import Card from '@/components/ui/Card';
 import { SkeletonRow, SkeletonDonut } from '@/components/ui/Skeleton';
-import type { FoodEntry, UserSettings, FrequentItem, Meal } from '@/types';
+import type { FoodEntry, UserSettings, FrequentItem, Meal, AnchorCookbook } from '@/types';
 
 // Note: CACHE_KEYS now imported from enhanced-cache for consistency
 
@@ -35,6 +36,9 @@ export default function TrackScreen() {
   // One-time My Meals announcement: check once per session, after the first
   // successful load so it never fights the skeletons
   const announceCheckedRef = React.useRef(false);
+  // Cookbook reveal: newest published cookbook the client hasn't seen yet.
+  // DB-backed (revealed_at), so it fires once ever, across devices.
+  const [revealCookbook, setRevealCookbook] = useState<AnchorCookbook | null>(null);
   const [entries, setEntries] = useState<FoodEntry[]>([]);
   const [settings, setSettings] = useState<UserSettings>({
     id: '',
@@ -89,13 +93,24 @@ export default function TrackScreen() {
   // Show the My Meals announcement once per user, after the first load.
   // The flag is stored OUTSIDE the ft:-prefixed cache namespace on purpose:
   // sign-out wipes that namespace, and the popup must never replay.
+  // A pending cookbook reveal waits its turn: one popup per app-open, max.
   useEffect(() => {
     if (loading || announceCheckedRef.current) return;
     if (!settings.user_id) return; // wait for real settings (has the user id)
     announceCheckedRef.current = true;
     if (!rawCache.get<boolean>(`announce:meals:${settings.user_id}`)) {
       setAnnounceOpen(true);
+      return;
     }
+    db.cookbooks
+      .listMine()
+      .then((books) => {
+        const pending = books.find((b) => !b.revealed_at);
+        if (pending) setRevealCookbook(pending);
+      })
+      .catch(() => {
+        // Reveal is a nicety — never let it interfere with tracking
+      });
   }, [loading, settings.user_id]);
 
   const dismissAnnouncement = () => {
@@ -103,6 +118,17 @@ export default function TrackScreen() {
       rawCache.set(`announce:meals:${settings.user_id}`, true);
     }
     setAnnounceOpen(false);
+  };
+
+  // Either action marks the reveal seen — it must never show twice
+  const closeReveal = (openIt: boolean) => {
+    const cookbook = revealCookbook;
+    if (!cookbook) return;
+    setRevealCookbook(null);
+    db.cookbooks.markRevealed(cookbook.id).catch(() => {});
+    if (openIt) {
+      router.push({ pathname: '/meals', params: { cookbook: cookbook.id } });
+    }
   };
 
   // Load frequent items (and saved meals for meal chips) when data changes
@@ -732,6 +758,12 @@ export default function TrackScreen() {
           router.push('/meals');
         }}
         onDismiss={dismissAnnouncement}
+      />
+
+      <CookbookReveal
+        cookbook={revealCookbook}
+        onOpen={() => closeReveal(true)}
+        onLater={() => closeReveal(false)}
       />
 
       <CalendarSheet

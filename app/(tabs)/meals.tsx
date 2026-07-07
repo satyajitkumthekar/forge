@@ -4,19 +4,20 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { Link, useFocusEffect } from 'expo-router';
+import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { db } from '@/lib/database';
 import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { appToday } from '@/utils/date';
 import { toast } from '@/lib/toast';
 import { useAuth } from '@/contexts/AuthContext';
 import MealBuilder from '@/components/meals/MealBuilder';
+import CookbookView from '@/components/cookbook/CookbookView';
 import Button from '@/components/ui/Button';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Skeleton } from '@/components/ui/Skeleton';
-import type { FoodEntry, Meal } from '@/types';
+import type { FoodEntry, Meal, AnchorCookbook } from '@/types';
 
 type BuilderState = null | { mode: 'new' } | { mode: 'edit'; meal: Meal };
 
@@ -37,6 +38,12 @@ export default function MealsScreen() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   // Bumped on tab focus so meals saved from Track show up on return
   const [focusVersion, setFocusVersion] = useState(0);
+  // Published anchor cookbooks from the coach; opened one takes over the screen
+  const [cookbooks, setCookbooks] = useState<AnchorCookbook[]>([]);
+  const [openCookbookId, setOpenCookbookId] = useState<string | null>(null);
+  // ?cookbook=<id> deep link (from the reveal popup) — consume it once
+  const params = useLocalSearchParams<{ cookbook?: string }>();
+  const cookbookParamConsumedRef = React.useRef(false);
 
   // Monotonic sequence guard: bumping it invalidates any in-flight background
   // load, so stale revalidations can never overwrite newer data or mutations
@@ -65,20 +72,27 @@ export default function MealsScreen() {
       try {
         // PHASE 1: Load from cache - INSTANT
         const cachedMeals = getCached<Meal[]>(CACHE_KEYS.meals);
+        const cachedCookbooks = getCached<AnchorCookbook[]>(CACHE_KEYS.cookbooks);
         if (isMounted) {
           if (cachedMeals !== null) setMeals(cachedMeals);
+          if (cachedCookbooks !== null) setCookbooks(cachedCookbooks);
           setLoading(cachedMeals === null);
         }
 
         // PHASE 2: Fetch fresh data (revalidate in background)
-        const freshMeals = await db.meals.list();
+        const [freshMeals, freshCookbooks] = await Promise.all([
+          db.meals.list(),
+          db.cookbooks.listMine(),
+        ]);
 
         if (!isMounted) return;
         // Superseded by a mutation or a newer load — discard
         if (seq !== loadSeqRef.current) return;
 
         setCached(CACHE_KEYS.meals, freshMeals);
+        setCached(CACHE_KEYS.cookbooks, freshCookbooks);
         setMeals(freshMeals);
+        setCookbooks(freshCookbooks);
         setLoading(false);
       } catch (err: any) {
         if (err?.message === 'Not authenticated') {
@@ -96,6 +110,17 @@ export default function MealsScreen() {
       isMounted = false;
     };
   }, [focusVersion]);
+
+  // Open a cookbook arriving via the reveal popup's deep link
+  useEffect(() => {
+    if (cookbookParamConsumedRef.current) return;
+    const target = typeof params.cookbook === 'string' ? params.cookbook : undefined;
+    if (!target) return;
+    if (cookbooks.some((cb) => cb.id === target)) {
+      cookbookParamConsumedRef.current = true;
+      setOpenCookbookId(target);
+    }
+  }, [params.cookbook, cookbooks]);
 
   const toggleExpanded = (mealId: string) => {
     setExpandedIds((prev) => {
@@ -157,6 +182,49 @@ export default function MealsScreen() {
     }
   };
 
+  /**
+   * One-tap add from inside a cookbook: pure insert of the preset baked at
+   * publish time (is_anchor meal matched by cookbook + recipe position).
+   * Throws on failure so CookbookView doesn't flip the button to "Added".
+   */
+  const handleAddFromCookbook = async (cookbook: AnchorCookbook, index: number) => {
+    const findPreset = (list: Meal[]) =>
+      list.find((m) => m.is_anchor && m.cookbook_id === cookbook.id && m.position === index);
+
+    let anchorMeal = findPreset(meals);
+    if (!anchorMeal) {
+      // Presets can be newer than the cached meals list (e.g. just republished)
+      const freshMeals = await db.meals.list();
+      loadSeqRef.current++;
+      setMeals(freshMeals);
+      setCached(CACHE_KEYS.meals, freshMeals);
+      anchorMeal = findPreset(freshMeals);
+    }
+    if (!anchorMeal) {
+      toast.error('Could not add this meal — please try again');
+      throw new Error('Anchor meal preset not found');
+    }
+
+    try {
+      const date = appToday();
+      await db.food.addMany(
+        date,
+        anchorMeal.items.map(({ name, calories, protein, description }) => ({ name, calories, protein, description })),
+        anchorMeal.id
+      );
+
+      // Warm Track's cache so the entries are already there on tab switch
+      const fresh = await db.food.getByDate(date);
+      setCached<FoodEntry[]>(CACHE_KEYS.entries(date), fresh);
+
+      toast.success(`${anchorMeal.name} added to today · ${anchorMeal.items.length} items`);
+    } catch (err) {
+      console.error('Error adding anchor meal:', err);
+      toast.error('Could not add meal. Please try again.');
+      throw err;
+    }
+  };
+
   const handleSaved = (savedMeal: Meal) => {
     // Invalidate any in-flight background load; this mutation owns the final state
     loadSeqRef.current++;
@@ -182,6 +250,42 @@ export default function MealsScreen() {
       />
     );
   }
+
+  // Full-screen takeover: an opened cookbook is a document, not a list —
+  // minimal chrome, the typeset page is the experience
+  const openCookbook = cookbooks.find((cb) => cb.id === openCookbookId);
+  if (openCookbook) {
+    return (
+      <div className="h-full flex flex-col bg-paper">
+        <div className="bg-paper-raised/80 backdrop-blur-md border-b border-line/70 px-4 md:px-6 lg:px-8 py-3">
+          <div className="max-w-2xl mx-auto flex items-center gap-2">
+            <button
+              onClick={() => setOpenCookbookId(null)}
+              className="min-w-[44px] min-h-[44px] -ml-2 flex items-center justify-center text-ink-soft hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150"
+              aria-label="Back to meals"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+              </svg>
+            </button>
+            <h1 className="text-sm font-semibold tracking-tight text-ink truncate">
+              {openCookbook.content.shortTitle}
+            </h1>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto">
+          <CookbookView
+            cookbook={openCookbook}
+            mode="client"
+            onAddMeal={(index) => handleAddFromCookbook(openCookbook, index)}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  // Coach-prescribed presets live inside their cookbook, not the personal list
+  const personalMeals = meals.filter((meal) => !meal.is_anchor);
 
   return (
     <div className="h-full flex flex-col bg-paper">
@@ -231,20 +335,60 @@ export default function MealsScreen() {
               </Card>
             ))}
           </>
-        ) : meals.length === 0 ? (
-          <Card>
-            <EmptyState
-              icon={MealsGlyph}
-              title="No meals yet"
-              subtitle="Save your go-to combos once, log them in one tap."
-            />
-            <div className="px-8 pb-8 -mt-2 flex justify-center">
-              <Button onClick={() => setBuilder({ mode: 'new' })}>New Meal</Button>
-            </div>
-          </Card>
         ) : (
           <>
-            {meals.map((meal) => {
+            {/* Anchor Meals — coach-crafted cookbooks, above personal meals */}
+            {cookbooks.length > 0 && (
+              <div className="space-y-3">
+                <div className="pt-1 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+                  From your coach
+                </div>
+                {cookbooks.map((cb) => (
+                  <button
+                    key={cb.id}
+                    onClick={() => setOpenCookbookId(cb.id)}
+                    className="w-full text-left bg-paper-raised rounded-card border border-line shadow-card p-5 hover:bg-paper-inset active:bg-paper-deep transition duration-150 animate-fade-in"
+                  >
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.25em] text-ink-muted">
+                      Superhuman Lab
+                    </div>
+                    <div className="mt-1.5 flex items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-base font-semibold tracking-tight text-ink break-words">
+                          {cb.content.shortTitle}
+                        </div>
+                        <div className="text-xs text-ink-muted mt-0.5">
+                          {cb.content.meals.length} meal{cb.content.meals.length === 1 ? '' : 's'} · crafted by your coach
+                        </div>
+                      </div>
+                      <svg className="w-4 h-4 text-ink-faint flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </div>
+                  </button>
+                ))}
+                {personalMeals.length > 0 && (
+                  <div className="pt-2 text-[11px] font-semibold uppercase tracking-wider text-ink-muted">
+                    My Meals
+                  </div>
+                )}
+              </div>
+            )}
+
+            {personalMeals.length === 0 && cookbooks.length === 0 ? (
+              <Card>
+                <EmptyState
+                  icon={MealsGlyph}
+                  title="No meals yet"
+                  subtitle="Save your go-to combos once, log them in one tap."
+                />
+                <div className="px-8 pb-8 -mt-2 flex justify-center">
+                  <Button onClick={() => setBuilder({ mode: 'new' })}>New Meal</Button>
+                </div>
+              </Card>
+            ) : null}
+
+            {personalMeals.map((meal) => {
               const totalCalories = meal.items.reduce((sum, item) => sum + item.calories, 0);
               const totalProtein = Math.round(meal.items.reduce((sum, item) => sum + item.protein, 0) * 10) / 10;
               const isExpanded = expandedIds.has(meal.id);
