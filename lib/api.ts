@@ -4,6 +4,7 @@
  * Components should NEVER call OpenAI or external APIs directly!
  */
 
+import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import type { CoachContext, AnchorCookbookContent } from '../types';
 
@@ -17,6 +18,18 @@ const invokeFunction = async <T>(functionName: string, body: any): Promise<T> =>
     });
 
     if (error) {
+      // Non-2xx responses surface as a generic "non-2xx status code" —
+      // the function's actual { error } body lives on error.context
+      if (error instanceof FunctionsHttpError) {
+        let detail: string | undefined;
+        try {
+          const errorBody = await error.context.json();
+          if (typeof errorBody?.error === 'string') detail = errorBody.error;
+        } catch {
+          // Body wasn't JSON — fall through to the generic message
+        }
+        throw new Error(detail || error.message || `Function error: ${functionName}`);
+      }
       throw new Error(error.message || `Function error: ${functionName}`);
     }
 
