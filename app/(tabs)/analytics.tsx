@@ -13,7 +13,7 @@ import { api } from '@/lib/api';
 import { toast } from '@/lib/toast';
 import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { getWeekStart, formatWeekRange, getWeeklyStats } from '@/utils/weekly-stats';
-import { appToday } from '@/utils/date';
+import { appToday, addDaysYMD } from '@/utils/date';
 import { format, addDays } from 'date-fns';
 import { formatDate, formatLogTime24, getTierColor } from '@/components/admin/helpers';
 import Button from '@/components/ui/Button';
@@ -27,7 +27,8 @@ import UserActivityTable from '@/components/admin/UserActivityTable';
 import UserChips from '@/components/admin/UserChips';
 import CoachTable from '@/components/admin/CoachTable';
 import CookbookPanel from '@/components/admin/CookbookPanel';
-import type { AnalyticsSummary, DailyMetrics, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis } from '@/types';
+import ReflectionsPanel from '@/components/admin/ReflectionsPanel';
+import type { AnalyticsSummary, DailyMetrics, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, WeekReflectionMarker } from '@/types';
 
 // Cache TTL: 5 minutes (analytics don't need to be real-time)
 const ANALYTICS_CACHE_TTL = 5 * 60 * 1000;
@@ -47,6 +48,7 @@ export default function AnalyticsScreen() {
   const [error, setError] = useState<string | null>(null);
   const [updatingTier, setUpdatingTier] = useState<string | null>(null);
   const [updatingClient, setUpdatingClient] = useState<string | null>(null);
+  const [updatingReflections, setUpdatingReflections] = useState<string | null>(null);
   const [updatingMacros, setUpdatingMacros] = useState<string | null>(null);
   const [updatingReminder, setUpdatingReminder] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -72,6 +74,11 @@ export default function AnalyticsScreen() {
 
   // Anchor-cookbook panel (full-screen takeover for one client)
   const [cookbookUser, setCookbookUser] = useState<{ id: string; email: string } | null>(null);
+
+  // Morning-practice reflections: ledger markers for the viewed week + the
+  // per-client panel (full-screen takeover, like cookbooks)
+  const [weekReflections, setWeekReflections] = useState<WeekReflectionMarker[]>([]);
+  const [reflectionsUser, setReflectionsUser] = useState<{ id: string; email: string; focusDate?: string } | null>(null);
 
   useEffect(() => {
     checkAdminAndLoadAnalytics();
@@ -161,6 +168,15 @@ export default function AnalyticsScreen() {
       const weekStartStr = format(weekStart, 'yyyy-MM-dd');
       const rawCoachData = await db.analytics.getCoachAnalytics(weekStartStr);
 
+      // Morning-practice markers for the viewed week; never let a failure
+      // here take down the whole dashboard
+      let weekReflectionData: WeekReflectionMarker[] = [];
+      try {
+        weekReflectionData = await db.reflections.adminWeek(weekStartStr);
+      } catch (err) {
+        console.error('[Analytics] Error loading week reflections:', err);
+      }
+
       const [maxUsers, totalUsers] = await Promise.all([
         db.admin.getMaxAllowedUsers(),
         db.admin.getTotalActiveUsers(),
@@ -235,6 +251,7 @@ export default function AnalyticsScreen() {
       setDailyMetrics(metricsData);
       setUserMetrics(usersData);
       setCoachAnalytics(coachData);
+      setWeekReflections(weekReflectionData);
 
       // Initialize selected users if not already set
       if (coachData.length > 0 && selectedUsers.size === 0) {
@@ -279,6 +296,20 @@ export default function AnalyticsScreen() {
       console.error('Error toggling client flag:', err);
     } finally {
       setUpdatingClient(null);
+    }
+  };
+
+  const handleReflectionsToggle = async (userId: string, currentValue: boolean) => {
+    setUpdatingReflections(userId);
+    try {
+      await db.analytics.toggleReflections(userId, !currentValue);
+
+      // Reload analytics and update cache
+      await loadAnalytics(true); // Force refresh to clear cache
+    } catch (err) {
+      console.error('Error toggling reflections:', err);
+    } finally {
+      setUpdatingReflections(null);
     }
   };
 
@@ -623,6 +654,27 @@ export default function AnalyticsScreen() {
     }
   }
 
+  // Morning-practice marker for a logged day cell. Only clients with the
+  // practice switched on get markers; days not yet over get none.
+  const reflectionMarkerFor = (
+    userId: string,
+    dateStr: string
+  ): 'view' | 'in_progress' | 'missed' | 'incomplete' | null => {
+    const user = userMetrics.find(u => u.user_id === userId);
+    if (!user?.reflections_enabled) return null;
+    const today = getTodayDate();
+    if (dateStr >= today) return null;
+
+    const row = weekReflections.find(r => r.user_id === userId && r.reflection_date === dateStr);
+    if (!row) return 'missed'; // logged day, practice on, never opened
+    if (row.status === 'completed') return 'view';
+    if (row.status === 'incomplete') return 'incomplete';
+    if (row.status === 'missed') return 'missed';
+    // A live (pending/in_progress) row is only current for yesterday;
+    // anything older reads as missed
+    return dateStr === addDaysYMD(today, -1) ? 'in_progress' : 'missed';
+  };
+
   // Search and sort user metrics
   const filteredAndSortedUserMetrics = userMetrics
     // Filter by search query
@@ -830,9 +882,11 @@ export default function AnalyticsScreen() {
                 onNextPage={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
                 updatingTier={updatingTier}
                 updatingClient={updatingClient}
+                updatingReflections={updatingReflections}
                 updatingMacros={updatingMacros}
                 onTierChange={handleTierChange}
                 onClientToggle={handleClientToggle}
+                onReflectionsToggle={handleReflectionsToggle}
                 onMacroUpdate={handleMacroUpdate}
               />
             </div>
@@ -895,6 +949,11 @@ export default function AnalyticsScreen() {
               onRefreshCoaching={handleRefreshCoaching}
               getTimezone={(userId) => userMetrics.find(u => u.user_id === userId)?.timezone}
               onOpenCookbooks={(userId, email) => setCookbookUser({ id: userId, email })}
+              getReflectionMarker={reflectionMarkerFor}
+              onViewReflection={(userId, email, dateStr) =>
+                setReflectionsUser({ id: userId, email, focusDate: dateStr })
+              }
+              onOpenReflections={(userId, email) => setReflectionsUser({ id: userId, email })}
             />
           )}
         </div>
@@ -905,6 +964,15 @@ export default function AnalyticsScreen() {
           userId={cookbookUser.id}
           email={cookbookUser.email}
           onClose={() => setCookbookUser(null)}
+        />
+      )}
+
+      {reflectionsUser && (
+        <ReflectionsPanel
+          userId={reflectionsUser.id}
+          email={reflectionsUser.email}
+          focusDate={reflectionsUser.focusDate ?? null}
+          onClose={() => setReflectionsUser(null)}
         />
       )}
     </div>

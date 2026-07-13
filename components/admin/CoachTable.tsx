@@ -30,6 +30,15 @@ interface CoachTableProps {
   getTimezone?: (userId: string) => string | null | undefined;
   /** Opens the anchor-cookbook panel for a client */
   onOpenCookbooks?: (userId: string, email: string) => void;
+  /** Morning-practice marker for a logged day cell; null = no marker */
+  getReflectionMarker?: (
+    userId: string,
+    dateStr: string
+  ) => 'view' | 'in_progress' | 'missed' | 'incomplete' | null;
+  /** Opens the reflections panel focused on one day's transcript */
+  onViewReflection?: (userId: string, email: string, dateStr: string) => void;
+  /** Opens the reflections panel for a client (week view) */
+  onOpenReflections?: (userId: string, email: string) => void;
 }
 
 const headerCellClass =
@@ -49,6 +58,9 @@ export default function CoachTable({
   onRefreshCoaching,
   getTimezone,
   onOpenCookbooks,
+  getReflectionMarker,
+  onViewReflection,
+  onOpenReflections,
 }: CoachTableProps) {
   return (
     <div className="overflow-x-auto">
@@ -122,6 +134,8 @@ export default function CoachTable({
                   ].map(([cal, pro], idx) => {
                     const calColor = getCaloriesColor(cal, user.target_calories, user.maintenance_calories);
                     const proColor = getProteinColor(Number(pro), user.target_protein);
+                    const dateStr = format(addDays(weekStart, idx), 'yyyy-MM-dd');
+                    const marker = cal === 0 ? null : getReflectionMarker?.(user.user_id, dateStr) ?? null;
 
                     return (
                       <td key={idx} className="px-2 py-4">
@@ -135,6 +149,21 @@ export default function CoachTable({
                             <div className={`px-2 py-1 rounded-full text-xs font-bold text-center tabular-nums ${proColor}`}>
                               {Number(pro).toFixed(0)}g
                             </div>
+                            {/* Morning-practice marker for the day */}
+                            {marker === 'view' ? (
+                              <button
+                                onClick={() => onViewReflection?.(user.user_id, user.email, dateStr)}
+                                className="w-full text-center text-[10px] font-semibold text-accent-700 hover:underline"
+                              >
+                                view
+                              </button>
+                            ) : marker === 'incomplete' ? (
+                              <div className="text-center text-[10px] font-medium text-warn">incomplete</div>
+                            ) : marker === 'in_progress' ? (
+                              <div className="text-center text-[10px] text-ink-muted">in progress</div>
+                            ) : marker === 'missed' ? (
+                              <div className="text-center text-[10px] text-ink-faint">no reflection</div>
+                            ) : null}
                           </div>
                         )}
                       </td>
@@ -154,21 +183,32 @@ export default function CoachTable({
                         </div>
                       ) : (
                         <div>
-                          {/* Cookbooks entry + view toggle */}
+                          {/* Cookbooks + Reflections entries + view toggle */}
                           <div className="flex items-center justify-between gap-2 mb-4">
-                            {onOpenCookbooks ? (
-                              <button
-                                onClick={() => onOpenCookbooks(user.user_id, user.email)}
-                                className="inline-flex items-center gap-1.5 min-h-[36px] px-3 text-xs font-medium rounded-ctrl border border-line bg-paper-inset text-ink hover:bg-paper-deep active:scale-[0.97] transition duration-150 ease-spring"
-                              >
-                                <svg className="w-3.5 h-3.5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
-                                </svg>
-                                Cookbooks
-                              </button>
-                            ) : (
-                              <span />
-                            )}
+                            <div className="flex items-center gap-2">
+                              {onOpenCookbooks && (
+                                <button
+                                  onClick={() => onOpenCookbooks(user.user_id, user.email)}
+                                  className="inline-flex items-center gap-1.5 min-h-[36px] px-3 text-xs font-medium rounded-ctrl border border-line bg-paper-inset text-ink hover:bg-paper-deep active:scale-[0.97] transition duration-150 ease-spring"
+                                >
+                                  <svg className="w-3.5 h-3.5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                                  </svg>
+                                  Cookbooks
+                                </button>
+                              )}
+                              {onOpenReflections && (
+                                <button
+                                  onClick={() => onOpenReflections(user.user_id, user.email)}
+                                  className="inline-flex items-center gap-1.5 min-h-[36px] px-3 text-xs font-medium rounded-ctrl border border-line bg-paper-inset text-ink hover:bg-paper-deep active:scale-[0.97] transition duration-150 ease-spring"
+                                >
+                                  <svg className="w-3.5 h-3.5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                                  </svg>
+                                  Reflections
+                                </button>
+                              )}
+                            </div>
                             <SegmentedControl
                               options={[
                                 { value: 'table', label: 'Table' },

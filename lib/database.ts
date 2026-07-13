@@ -17,7 +17,29 @@ import type {
   Meal,
   AnchorCookbook,
   AnchorCookbookContent,
+  DailyReflection,
+  ReflectionPath,
+  ReflectionFailReason,
+  WeekReflectionMarker,
 } from '../types';
+
+/**
+ * Step-save patch for a live reflection. Only these columns are grantable to
+ * clients — the gate snapshot (verdict, totals, targets) is server-written
+ * and tamper-proof.
+ */
+export interface ReflectionProgressPatch {
+  status?: 'in_progress' | 'completed' | 'incomplete';
+  path?: ReflectionPath;
+  fail_reason?: ReflectionFailReason;
+  heard_before?: boolean;
+  showed_up?: boolean;
+  logging_complete?: boolean;
+  answers?: Record<string, string>;
+  current_step?: string | null;
+  started_at?: string;
+  completed_at?: string;
+}
 
 /** Input shape for meal items and batch entry inserts */
 export interface FoodItemInput {
@@ -375,6 +397,117 @@ export const db = {
   },
 
   // ============================================
+  // DAILY REFLECTIONS (next-day morning practice)
+  // ============================================
+  reflections: {
+    /**
+     * Get-or-create the caller's reflection for a date. The server computes
+     * the verdict from that day's logged food vs. targets. Returns null when
+     * no reflection should fire (practice off, unlogged day, no targets).
+     */
+    start: async (reflectionDate: string): Promise<DailyReflection | null> => {
+      const { data, error } = await supabase
+        .rpc('start_daily_reflection', { p_reflection_date: reflectionDate });
+
+      if (error) throw error;
+      return (data?.[0] as DailyReflection) ?? null;
+    },
+
+    /**
+     * Save one step's answer. The row is the saved progress: `answers` is the
+     * whole current object, `current_step` the resume point. RLS restricts
+     * this to the caller's own live (pending/in_progress) rows.
+     */
+    saveProgress: async (id: string, patch: ReflectionProgressPatch): Promise<DailyReflection> => {
+      const { data, error } = await supabase
+        .from('daily_reflections')
+        .update(patch)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data as DailyReflection;
+    },
+
+    /**
+     * Finish the flow — the only thing that clears the morning popup/banner
+     */
+    complete: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .from('daily_reflections')
+        .update({
+          status: 'completed',
+          completed_at: new Date().toISOString(),
+          current_step: null,
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+
+    /**
+     * Pre-check answered "didn't log everything": the day is flagged
+     * incomplete (no win, no fail) and the practice closes lightly
+     */
+    closeIncomplete: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .from('daily_reflections')
+        .update({
+          status: 'incomplete',
+          logging_complete: false,
+          completed_at: new Date().toISOString(),
+          current_step: null,
+        })
+        .eq('id', id);
+
+      if (error) throw error;
+    },
+
+    /**
+     * Test practice helper (admin-only, self-scoped): wipe the caller's own
+     * reflection for a date so the popup can re-fire against fresh data
+     */
+    testReset: async (reflectionDate: string): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_reset_my_reflection', { p_date: reflectionDate });
+
+      if (error) throw error;
+    },
+
+    /**
+     * Coach ledger markers: all reflections in a week, all clients (admin only)
+     */
+    adminWeek: async (weekStart: string): Promise<WeekReflectionMarker[]> => {
+      const { data, error } = await supabase
+        .rpc('get_week_reflections', { p_week_start: weekStart });
+
+      if (error) throw error;
+      return data || [];
+    },
+
+    /**
+     * Full reflection rows for one client over a period (admin only) —
+     * feeds the Reflections panel
+     */
+    adminForClient: async (
+      userId: string,
+      startDate: string,
+      endDate: string
+    ): Promise<DailyReflection[]> => {
+      const { data, error } = await supabase
+        .rpc('get_client_reflections', {
+          p_user_id: userId,
+          p_start: startDate,
+          p_end: endDate,
+        });
+
+      if (error) throw error;
+      return data || [];
+    },
+  },
+
+  // ============================================
   // USER SETTINGS
   // ============================================
   settings: {
@@ -707,6 +840,19 @@ export const db = {
         .rpc('admin_toggle_client_flag', {
           target_user_id: userId,
           new_client_value: isClient,
+        });
+
+      if (error) throw error;
+    },
+
+    /**
+     * Toggle a client's morning practice (daily reflection) on or off
+     */
+    toggleReflections: async (userId: string, enabled: boolean): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_toggle_reflections', {
+          target_user_id: userId,
+          new_enabled_value: enabled,
         });
 
       if (error) throw error;

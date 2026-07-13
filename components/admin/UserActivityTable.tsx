@@ -23,9 +23,11 @@ interface UserActivityTableProps {
   onNextPage: () => void;
   updatingTier: string | null;
   updatingClient: string | null;
+  updatingReflections: string | null;
   updatingMacros: string | null;
   onTierChange: (userId: string, newTier: 'basic' | 'pro' | 'admin') => void;
   onClientToggle: (userId: string, currentValue: boolean) => void;
+  onReflectionsToggle: (userId: string, currentValue: boolean) => void;
   onMacroUpdate: (userId: string, maintenance: number, target: number, protein: number) => void;
 }
 
@@ -48,9 +50,11 @@ export default function UserActivityTable({
   onNextPage,
   updatingTier,
   updatingClient,
+  updatingReflections,
   updatingMacros,
   onTierChange,
   onClientToggle,
+  onReflectionsToggle,
   onMacroUpdate,
 }: UserActivityTableProps) {
   return (
@@ -100,6 +104,7 @@ export default function UserActivityTable({
                   <th className={headerCellClass}>User #</th>
                   <th className={headerCellClass}>Tier</th>
                   <th className={headerCellClass}>Client</th>
+                  <th className={headerCellClass}>Practice</th>
                   <th className={headerCellClass}>Maintenance Cal</th>
                   <th className={headerCellClass}>Target Cal</th>
                   <th className={headerCellClass}>Target Pro</th>
@@ -146,6 +151,20 @@ export default function UserActivityTable({
                         } ${updatingClient === user.user_id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
                       >
                         {updatingClient === user.user_id ? '...' : user.client ? 'YES' : 'NO'}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      {/* Morning practice (daily reflection) — opt-in per client */}
+                      <button
+                        onClick={() => onReflectionsToggle(user.user_id, user.reflections_enabled)}
+                        disabled={updatingReflections === user.user_id}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                          user.reflections_enabled
+                            ? 'bg-accent-100 text-accent-700 border border-accent-100 hover:bg-accent-100'
+                            : 'bg-paper-inset text-ink-muted border border-line hover:bg-paper-deep'
+                        } ${updatingReflections === user.user_id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                      >
+                        {updatingReflections === user.user_id ? '...' : user.reflections_enabled ? 'ON' : 'OFF'}
                       </button>
                     </td>
                     <td className="px-4 py-3">

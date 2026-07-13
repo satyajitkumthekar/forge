@@ -18,6 +18,10 @@ import FrequentItems from '@/components/FrequentItems';
 import CalendarSheet from '@/components/CalendarSheet';
 import FeatureAnnouncement from '@/components/FeatureAnnouncement';
 import CookbookReveal from '@/components/cookbook/CookbookReveal';
+import ReflectionModal from '@/components/reflection/ReflectionModal';
+import ReflectionBanner from '@/components/reflection/ReflectionBanner';
+import TestPracticeSheet, { type TestScenarioKey } from '@/components/reflection/TestPracticeSheet';
+import { useReflection } from '@/components/reflection/useReflection';
 import { useAuth } from '@/contexts/AuthContext';
 import { appToday, todayLocal, addDaysYMD, maxNavigableDate, formatDisplayDate, parseYMD } from '@/utils/date';
 import { tokens } from '@/lib/design-tokens';
@@ -26,6 +30,59 @@ import { SkeletonRow, SkeletonDonut } from '@/components/ui/Skeleton';
 import type { FoodEntry, UserSettings, FrequentItem, Meal, AnchorCookbook } from '@/types';
 
 // Note: CACHE_KEYS now imported from enhanced-cache for consistency
+
+/**
+ * Split a day's macro totals into three realistic test entries whose sums
+ * are EXACT — the gate checks boundaries, so rounding drift would flip cases
+ */
+const splitTestEntries = (calories: number, protein: number): FoodItemInput[] => {
+  const calBreakfast = Math.round(calories * 0.3);
+  const calLunch = Math.round(calories * 0.4);
+  const proBreakfast = Math.round(protein * 0.3);
+  const proLunch = Math.round(protein * 0.4);
+  return [
+    { name: 'Test breakfast', calories: calBreakfast, protein: proBreakfast },
+    { name: 'Test lunch', calories: calLunch, protein: proLunch },
+    {
+      name: 'Test dinner',
+      calories: calories - calBreakfast - calLunch,
+      protein: protein - proBreakfast - proLunch,
+    },
+  ];
+};
+
+/**
+ * Seed totals per test scenario, computed from the account's OWN targets so
+ * presets work whatever the settings are. Margins sit clearly beyond the 5%
+ * calorie buffer and the strict protein floor, without tripping the 70%
+ * suspicious-log check. Returns null = leave the log untouched (reset only).
+ */
+const testSeedFor = (key: TestScenarioKey, settings: UserSettings): FoodItemInput[] | null => {
+  const target = settings.target_calories;
+  const protein = settings.target_protein;
+  const isCut = settings.target_calories < settings.maintenance_calories;
+  const calPass = Math.round(target * 0.97);
+  const calMiss = isCut ? Math.round(target * 1.15) : Math.round(target * 0.85);
+  const proPass = protein + 10;
+  const proMiss = Math.max(10, protein - 40);
+
+  switch (key) {
+    case 'win':
+      return splitTestEntries(calPass, proPass);
+    case 'fail_calories':
+      return splitTestEntries(calMiss, proPass);
+    case 'fail_protein':
+      return splitTestEntries(calPass, proMiss);
+    case 'fail_both':
+      return splitTestEntries(calMiss, proMiss);
+    case 'suspicious_low':
+      return splitTestEntries(Math.round(target * 0.6), Math.max(5, Math.round(protein * 0.4)));
+    case 'unlogged':
+      return [];
+    case 'reset_only':
+      return null;
+  }
+};
 
 export default function TrackScreen() {
   const { signOut } = useAuth();
@@ -60,6 +117,43 @@ export default function TrackScreen() {
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [coachReminder, setCoachReminder] = useState<string | null>(null);
 
+  // Morning practice (next-day reflection): sticky popup + banner until done
+  const {
+    reflection: activeReflection,
+    isActive: reflectionActive,
+    modalOpen: reflectionModalOpen,
+    step: reflectionStep,
+    ctx: reflectionCtx,
+    answers: reflectionAnswers,
+    saving: reflectionSaving,
+    check: checkReflection,
+    openModal: openReflection,
+    dismiss: dismissReflection,
+    answerStep: answerReflectionStep,
+    finishStep: finishReflectionStep,
+  } = useReflection();
+
+  // Test practice (admin-only): scenario menu that seeds yesterday and
+  // re-fires the popup so every path can be walked against real data
+  const [isAdmin, setIsAdmin] = useState(() => getCached<string>(CACHE_KEYS.accountType) === 'admin');
+  const [testSheetOpen, setTestSheetOpen] = useState(false);
+  const [testRunning, setTestRunning] = useState<TestScenarioKey | null>(null);
+
+  useEffect(() => {
+    if (getCached<string>(CACHE_KEYS.accountType) !== null) return;
+    let cancelled = false;
+    db.rateLimit
+      .getStatus()
+      .then((status) => {
+        setCached(CACHE_KEYS.accountType, status.account_type, 60 * 60 * 1000);
+        if (!cancelled) setIsAdmin(status.account_type === 'admin');
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Monotonic sequence guard: bumping it invalidates any in-flight background
   // load, so stale revalidations can never overwrite newer data or mutations
   const loadSeqRef = React.useRef(0);
@@ -90,28 +184,75 @@ export default function TrackScreen() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Show the My Meals announcement once per user, after the first load.
-  // The flag is stored OUTSIDE the ft:-prefixed cache namespace on purpose:
-  // sign-out wipes that namespace, and the popup must never replay.
-  // A pending cookbook reveal waits its turn: one popup per app-open, max.
+  // One popup per app-open, max — priority: morning practice (daily, expires)
+  // → My Meals announcement (once ever) → cookbook reveal (once per book).
+  // The announcement flag is stored OUTSIDE the ft:-prefixed cache namespace
+  // on purpose: sign-out wipes that namespace, and it must never replay.
   useEffect(() => {
     if (loading || announceCheckedRef.current) return;
     if (!settings.user_id) return; // wait for real settings (has the user id)
     announceCheckedRef.current = true;
-    if (!rawCache.get<boolean>(`announce:meals:${settings.user_id}`)) {
-      setAnnounceOpen(true);
-      return;
+
+    (async () => {
+      // The practice needs connectivity (verdict is computed server-side);
+      // an offline morning retries silently on the next online open
+      try {
+        if (checkOnlineStatus()) {
+          const fired = await checkReflection(addDaysYMD(appToday(), -1));
+          if (fired) return;
+        }
+      } catch {
+        // The practice is a nicety at load time — never block tracking
+      }
+
+      if (!rawCache.get<boolean>(`announce:meals:${settings.user_id}`)) {
+        setAnnounceOpen(true);
+        return;
+      }
+      db.cookbooks
+        .listMine()
+        .then((books) => {
+          const pending = books.find((b) => !b.revealed_at);
+          if (pending) setRevealCookbook(pending);
+        })
+        .catch(() => {
+          // Reveal is a nicety — never let it interfere with tracking
+        });
+    })();
+  }, [loading, settings.user_id, checkReflection]);
+
+  const runTestScenario = async (key: TestScenarioKey) => {
+    const yesterday = addDaysYMD(appToday(), -1);
+    setTestRunning(key);
+    try {
+      const items = testSeedFor(key, settings);
+      if (items !== null) {
+        const existing = await db.food.getByDate(yesterday);
+        await Promise.all(existing.map((entry) => db.food.delete(entry.id)));
+        if (items.length > 0) {
+          await db.food.addMany(yesterday, items);
+        }
+        invalidate(CACHE_KEYS.entries(yesterday));
+        setDataVersion((prev) => prev + 1);
+      }
+
+      await db.reflections.testReset(yesterday);
+      const fired = await checkReflection(yesterday);
+      setTestSheetOpen(false);
+      if (!fired) {
+        toast.info(
+          key === 'unlogged'
+            ? 'No practice fired — unlogged day, as expected'
+            : 'No practice fired — check the Practice toggle and targets for this account'
+        );
+      }
+    } catch (err) {
+      console.error('Test practice run failed:', err);
+      toast.error('Test run failed — see console for details');
+    } finally {
+      setTestRunning(null);
     }
-    db.cookbooks
-      .listMine()
-      .then((books) => {
-        const pending = books.find((b) => !b.revealed_at);
-        if (pending) setRevealCookbook(pending);
-      })
-      .catch(() => {
-        // Reveal is a nicety — never let it interfere with tracking
-      });
-  }, [loading, settings.user_id]);
+  };
 
   const dismissAnnouncement = () => {
     if (settings.user_id) {
@@ -615,6 +756,17 @@ export default function TrackScreen() {
           <div className="flex items-center justify-between mb-2">
             <h1 className="text-base md:text-lg font-semibold tracking-tight text-ink">Superhuman Lab</h1>
             <div className="flex items-center gap-1">
+              {isAdmin && (
+                <button
+                  onClick={() => setTestSheetOpen(true)}
+                  className="min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150"
+                  aria-label="Test practice"
+                >
+                  <svg className="w-5 h-5 text-ink-soft" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+                  </svg>
+                </button>
+              )}
               <Link
                 href="/settings"
                 className="min-w-[44px] min-h-[44px] flex items-center justify-center hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150"
@@ -699,6 +851,18 @@ export default function TrackScreen() {
         </div>
       </div>
 
+      {/* Morning practice banner: persists until the practice is completed */}
+      {reflectionActive && !reflectionModalOpen && !loading && (
+        <div className="bg-paper-raised/80 backdrop-blur-md border-b border-line/70 px-4 md:px-6 lg:px-8 py-2">
+          <div className="max-w-7xl mx-auto">
+            <ReflectionBanner
+              resuming={activeReflection?.status === 'in_progress'}
+              onOpen={openReflection}
+            />
+          </div>
+        </div>
+      )}
+
       {/* Totals Section */}
       <div className="bg-paper-raised/80 backdrop-blur-md border-b border-line/70 px-4 md:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto">
@@ -764,6 +928,24 @@ export default function TrackScreen() {
         cookbook={revealCookbook}
         onOpen={() => closeReveal(true)}
         onLater={() => closeReveal(false)}
+      />
+
+      <ReflectionModal
+        open={reflectionModalOpen}
+        step={reflectionStep}
+        ctx={reflectionCtx}
+        answers={reflectionAnswers}
+        saving={reflectionSaving}
+        onAnswer={answerReflectionStep}
+        onFinish={finishReflectionStep}
+        onDismiss={dismissReflection}
+      />
+
+      <TestPracticeSheet
+        open={testSheetOpen}
+        onClose={() => setTestSheetOpen(false)}
+        running={testRunning}
+        onRun={runTestScenario}
       />
 
       <CalendarSheet

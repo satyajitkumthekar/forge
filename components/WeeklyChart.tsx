@@ -121,7 +121,7 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
     const percentBelow = ((targetProtein - day.protein) / targetProtein) * 100;
 
     let barColor = C.good; // green
-    // Green: at or above target, or 0-10% below
+    // Green: at or above target, or 0-10% below (matches the gate's grace)
     if (percentBelow <= 10) {
       barColor = C.good;  // green - 0-10% below
     } else if (percentBelow <= 20) {

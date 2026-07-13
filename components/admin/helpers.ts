@@ -107,7 +107,8 @@ export const getCaloriesColor = (calories: number, target: number, maintenance: 
 };
 
 // Helper function to get color coding for daily protein
-// 0-10% green, 10-20% yellow, 20-30% orange, >30% red
+// 0-10% green (the gate's protein floor carries the same 10% grace),
+// 10-20% yellow, 20-30% orange, >30% red
 export const getProteinColor = (protein: number, target: number) => {
   if (protein === 0) return 'bg-paper-inset text-ink-muted';
 

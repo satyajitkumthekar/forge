@@ -94,6 +94,53 @@ export interface AnchorCookbook {
   updated_at: string;
 }
 
+// ============================================
+// DAILY REFLECTIONS (next-day morning practice)
+// ============================================
+
+export type ReflectionGoalType = 'cut' | 'maintenance' | 'bulk';
+export type ReflectionVerdict = 'success' | 'fail_calories' | 'fail_protein' | 'fail_both';
+export type ReflectionStatus = 'pending' | 'in_progress' | 'completed' | 'incomplete' | 'missed';
+export type ReflectionPath = 'smooth' | 'moments' | 'couldnt' | 'wouldnt';
+export type ReflectionFailReason = 'didnt_know' | 'no_time_access' | 'outside_control';
+
+export interface DailyReflection {
+  id: string;
+  user_id: string;
+  /** The day being reflected ON (yesterday), YYYY-MM-DD */
+  reflection_date: string;
+  /** Gate snapshot — computed server-side, read-only for clients */
+  total_calories: number;
+  total_protein: number;
+  target_calories: number;
+  maintenance_calories: number;
+  target_protein: number;
+  goal_type: ReflectionGoalType;
+  verdict: ReflectionVerdict;
+  suspicious_low: boolean;
+  status: ReflectionStatus;
+  path: ReflectionPath | null;
+  fail_reason: ReflectionFailReason | null;
+  heard_before: boolean | null;
+  showed_up: boolean | null;
+  logging_complete: boolean | null;
+  /** Free-text answers keyed by step id (see components/reflection/flow.ts) */
+  answers: Record<string, string>;
+  current_step: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Slim per-day row for the coach ledger markers (get_week_reflections) */
+export interface WeekReflectionMarker {
+  user_id: string;
+  reflection_date: string;
+  status: ReflectionStatus;
+  verdict: ReflectionVerdict;
+}
+
 export interface UserSettings {
   id: string;
   user_id: string;
@@ -196,6 +243,7 @@ export interface UserMetric {
   target_protein: number;
   coach_reminder: string | null;
   timezone?: string | null;
+  reflections_enabled: boolean;
 }
 
 export interface DailyNutrition {

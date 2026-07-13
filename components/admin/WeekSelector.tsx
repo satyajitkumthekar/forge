@@ -12,6 +12,8 @@ interface WeekSelectorProps {
   onPrev: () => void;
   onNext: () => void;
   onGoToCurrent: () => void;
+  /** Jump-back button text — override when stepping months, not weeks */
+  currentLabel?: string;
 }
 
 export default function WeekSelector({
@@ -20,6 +22,7 @@ export default function WeekSelector({
   onPrev,
   onNext,
   onGoToCurrent,
+  currentLabel = 'Current Week',
 }: WeekSelectorProps) {
   return (
     <div className="flex flex-col items-center">
@@ -50,7 +53,7 @@ export default function WeekSelector({
 
       {!isCurrentWeek && (
         <Button variant="ghost" size="sm" onClick={onGoToCurrent} className="mt-1 rounded-full">
-          Current Week
+          {currentLabel}
         </Button>
       )}
     </div>

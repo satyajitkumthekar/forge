@@ -226,4 +226,5 @@ export const CACHE_KEYS = {
   accountType: 'account_type',
   meals: 'meals',
   cookbooks: 'cookbooks',
+  reflection: 'active_reflection',
 };

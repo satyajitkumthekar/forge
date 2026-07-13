@@ -95,6 +95,7 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
     // Calculate percentage below target
     const percentBelow = ((targetProtein - totals.protein) / targetProtein) * 100;
 
+    // 10% grace below target stays green — matches the gate's protein floor
     if (percentBelow <= 10) return STATUS.good;   // at/above target or 0-10% below
     if (percentBelow <= 20) return STATUS.warn;   // 10-20% below
     if (percentBelow <= 30) return STATUS.alert;  // 20-30% below
