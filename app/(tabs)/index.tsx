@@ -17,6 +17,7 @@ import Totals from '@/components/Totals';
 import FrequentItems from '@/components/FrequentItems';
 import CalendarSheet from '@/components/CalendarSheet';
 import FeatureAnnouncement from '@/components/FeatureAnnouncement';
+import NamePrompt from '@/components/NamePrompt';
 import CookbookReveal from '@/components/cookbook/CookbookReveal';
 import ReflectionModal from '@/components/reflection/ReflectionModal';
 import ReflectionBanner from '@/components/reflection/ReflectionBanner';
@@ -90,6 +91,8 @@ export default function TrackScreen() {
   const [currentDate, setCurrentDate] = useState(appToday());
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [announceOpen, setAnnounceOpen] = useState(false);
+  // Required one-time name capture for accounts that predate full names
+  const [namePromptOpen, setNamePromptOpen] = useState(false);
   // One-time My Meals announcement: check once per session, after the first
   // successful load so it never fights the skeletons
   const announceCheckedRef = React.useRef(false);
@@ -184,16 +187,32 @@ export default function TrackScreen() {
     return () => clearTimeout(timer);
   }, []);
 
-  // One popup per app-open, max — priority: morning practice (daily, expires)
-  // → My Meals announcement (once ever) → cookbook reveal (once per book).
-  // The announcement flag is stored OUTSIDE the ft:-prefixed cache namespace
-  // on purpose: sign-out wipes that namespace, and it must never replay.
+  // One popup per app-open, max — priority: name capture (required, once
+  // ever) → morning practice (daily, expires) → My Meals announcement (once
+  // ever) → cookbook reveal (once per book). The name/announcement flags are
+  // stored OUTSIDE the ft:-prefixed cache namespace on purpose: sign-out
+  // wipes that namespace, and they must never replay.
   useEffect(() => {
     if (loading || announceCheckedRef.current) return;
     if (!settings.user_id) return; // wait for real settings (has the user id)
     announceCheckedRef.current = true;
 
     (async () => {
+      // Name first: accounts that predate full names must give one before
+      // anything else. The raw-cache flag skips the profile read once known.
+      try {
+        if (!rawCache.get<boolean>(`named:${settings.user_id}`)) {
+          const fullName = await db.access.getFullName();
+          if (!fullName) {
+            setNamePromptOpen(true);
+            return;
+          }
+          rawCache.set(`named:${settings.user_id}`, true);
+        }
+      } catch {
+        // Never block tracking on the name check
+      }
+
       // The practice needs connectivity (verdict is computed server-side);
       // an offline morning retries silently on the next online open
       try {
@@ -220,6 +239,23 @@ export default function TrackScreen() {
         });
     })();
   }, [loading, settings.user_id, checkReflection]);
+
+  // Saving the name ends the prompt forever; the morning practice still gets
+  // its turn on the same open
+  const handleNameSave = async (name: string) => {
+    await db.access.setFullName(name); // throws back into NamePrompt on failure
+    if (settings.user_id) {
+      rawCache.set(`named:${settings.user_id}`, true);
+    }
+    setNamePromptOpen(false);
+    try {
+      if (checkOnlineStatus()) {
+        await checkReflection(addDaysYMD(appToday(), -1));
+      }
+    } catch {
+      // Practice retries on the next open
+    }
+  };
 
   const runTestScenario = async (key: TestScenarioKey) => {
     const yesterday = addDaysYMD(appToday(), -1);
@@ -929,6 +965,8 @@ export default function TrackScreen() {
         onOpen={() => closeReveal(true)}
         onLater={() => closeReveal(false)}
       />
+
+      <NamePrompt open={namePromptOpen} onSave={handleNameSave} />
 
       <ReflectionModal
         open={reflectionModalOpen}

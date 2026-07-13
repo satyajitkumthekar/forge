@@ -11,6 +11,7 @@ import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 
 export default function SignUpScreen() {
+  const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -24,8 +25,13 @@ export default function SignUpScreen() {
     e?.preventDefault();
     if (loading) return;
 
-    if (!email || !password || !confirmPassword) {
+    if (!fullName.trim() || !email || !password || !confirmPassword) {
       setError('Please fill in all fields');
+      return;
+    }
+
+    if (fullName.trim().length < 2) {
+      setError('Please enter your full name');
       return;
     }
 
@@ -42,7 +48,7 @@ export default function SignUpScreen() {
     setLoading(true);
     setError('');
 
-    const { error: signUpError } = await signUp(email, password);
+    const { error: signUpError } = await signUp(email, password, fullName);
 
     if (signUpError) {
       setError(friendlyAuthError(signUpError));
@@ -88,6 +94,17 @@ export default function SignUpScreen() {
 
         {/* Form */}
         <form onSubmit={handleSignUp} className="space-y-4" noValidate>
+          <Input
+            id="full-name"
+            type="text"
+            label="Full name"
+            placeholder="Your full name"
+            autoComplete="name"
+            autoCapitalize="words"
+            value={fullName}
+            onChange={(e) => setFullName(e.target.value)}
+            disabled={loading}
+          />
           <Input
             id="email"
             type="email"

@@ -11,7 +11,7 @@ import type { User } from '@supabase/supabase-js';
 interface AuthContextType {
   user: User | null;
   loading: boolean;
-  signUp: (email: string, password: string) => Promise<{ error: any; data: any }>;
+  signUp: (email: string, password: string, fullName: string) => Promise<{ error: any; data: any }>;
   signIn: (email: string, password: string) => Promise<{ error: any; data: any }>;
   signOut: () => Promise<void>;
 }
@@ -62,11 +62,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return () => subscription.unsubscribe();
   }, []);
 
-  const signUp = async (email: string, password: string) => {
+  const signUp = async (email: string, password: string, fullName: string) => {
     try {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          // The profile-creation trigger copies this into user_profiles.full_name
+          data: { full_name: fullName.trim() },
+        },
       });
       return { data, error };
     } catch (error) {
