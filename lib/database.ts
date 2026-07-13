@@ -669,6 +669,35 @@ export const db = {
     },
 
     /**
+     * Get the signed-in user's full name (null = never provided; the
+     * required NamePrompt fires until it exists)
+     */
+    getFullName: async (): Promise<string | null> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('full_name')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+      return data?.full_name || null;
+    },
+
+    /**
+     * Save the signed-in user's full name (self-scoped server function —
+     * users cannot update their profile row directly)
+     */
+    setFullName: async (name: string): Promise<void> => {
+      const { error } = await supabase
+        .rpc('set_my_full_name', { p_name: name });
+
+      if (error) throw error;
+    },
+
+    /**
      * Get coach reminder for current user
      */
     getReminder: async (): Promise<string | null> => {
@@ -822,7 +851,7 @@ export const db = {
     /**
      * Update user's account tier
      */
-    updateUserTier: async (userId: string, tier: 'basic' | 'pro' | 'admin'): Promise<void> => {
+    updateUserTier: async (userId: string, tier: 'basic' | 'pro' | 'admin' | 'coach'): Promise<void> => {
       const { error } = await supabase
         .rpc('admin_update_user_tier', {
           target_user_id: userId,
@@ -841,6 +870,45 @@ export const db = {
           target_user_id: userId,
           new_client_value: isClient,
         });
+
+      if (error) throw error;
+    },
+
+    /**
+     * Assign a client to a coach (admin only). Null unassigns; the server
+     * validates the assignee holds the coach tier.
+     */
+    assignCoach: async (userId: string, coachId: string | null): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_assign_coach', {
+          target_user_id: userId,
+          coach_user_id: coachId,
+        });
+
+      if (error) throw error;
+    },
+
+    /**
+     * Grant or revoke app access (the doorman toggle). Revoking sends the
+     * user to the holding screen on their next app open.
+     */
+    setAccess: async (userId: string, granted: boolean): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_set_access', {
+          target_user_id: userId,
+          new_access_value: granted,
+        });
+
+      if (error) throw error;
+    },
+
+    /**
+     * Permanently delete a user's account and all their data (cascades
+     * through every table). Refuses self and other admins server-side.
+     */
+    deleteUser: async (userId: string): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_delete_user', { target_user_id: userId });
 
       if (error) throw error;
     },

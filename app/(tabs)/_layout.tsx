@@ -53,24 +53,28 @@ const AnalyticsIcon = ({ color }: { color: string }) => (
 );
 
 export default function TabLayout() {
-  const [isAdmin, setIsAdmin] = useState(
-    () => getCached<string>(CACHE_KEYS.accountType) === 'admin'
+  // 'admin' and 'coach' both get the staff tab; a coach's copy is scoped
+  // to their assigned clients and titled "Clients"
+  const [accountType, setAccountType] = useState<string | null>(
+    () => getCached<string>(CACHE_KEYS.accountType)
   );
 
-  // Check if user is admin (cache-first, revalidate in background)
+  // Check the account tier (cache-first, revalidate in background)
   useEffect(() => {
-    const checkAdminStatus = async () => {
+    const checkAccountType = async () => {
       try {
         const status = await db.rateLimit.getStatus();
         setCached(CACHE_KEYS.accountType, status.account_type, ACCOUNT_TYPE_TTL);
-        setIsAdmin(status.account_type === 'admin');
+        setAccountType(status.account_type);
       } catch (err) {
-        console.error('Error checking admin status:', err);
+        console.error('Error checking account type:', err);
       }
     };
 
-    checkAdminStatus();
+    checkAccountType();
   }, []);
+
+  const isStaff = accountType === 'admin' || accountType === 'coach';
 
   return (
     <Tabs
@@ -123,13 +127,13 @@ export default function TabLayout() {
           href: null, // Hidden for all users
         }}
       />
-      {/* Admin-only Tab */}
+      {/* Staff-only Tab: the full dashboard for admins, scoped clients for coaches */}
       <Tabs.Screen
         name="analytics"
         options={{
-          title: 'Admin',
+          title: accountType === 'coach' ? 'Clients' : 'Admin',
           tabBarIcon: ({ color }) => <AnalyticsIcon color={color} />,
-          href: isAdmin ? undefined : null,
+          href: isStaff ? undefined : null,
         }}
       />
     </Tabs>

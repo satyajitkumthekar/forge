@@ -26,6 +26,7 @@ import CookbookView from '@/components/cookbook/CookbookView';
 interface CookbookPanelProps {
   userId: string;
   email: string;
+  fullName?: string | null;
   onClose: () => void;
 }
 
@@ -40,7 +41,8 @@ const fileToBase64 = (file: File): Promise<string> => {
 
 type ConfirmKind = 'publish' | 'unpublish' | 'delete';
 
-export default function CookbookPanel({ userId, email, onClose }: CookbookPanelProps) {
+export default function CookbookPanel({ userId, email, fullName, onClose }: CookbookPanelProps) {
+  const displayName = fullName?.trim() || email;
   const [cookbooks, setCookbooks] = useState<AnchorCookbook[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [converting, setConverting] = useState(false);
@@ -106,7 +108,7 @@ export default function CookbookPanel({ userId, email, onClose }: CookbookPanelP
         await db.cookbooks.adminPublish(saved.id);
         toast.success('Cookbook updated and republished');
       } else {
-        toast.success(`"${content.shortTitle}" ready — review and publish`);
+        toast.success(`"${content.shortTitle}" ready. Review and publish`);
       }
 
       await loadCookbooks();
@@ -127,10 +129,10 @@ export default function CookbookPanel({ userId, email, onClose }: CookbookPanelP
     try {
       if (kind === 'publish') {
         await db.cookbooks.adminPublish(id);
-        toast.success(`Published — live for ${email}`);
+        toast.success(`Published. Live for ${displayName}`);
       } else if (kind === 'unpublish') {
         await db.cookbooks.adminUnpublish(id);
-        toast.success('Unpublished — back to draft');
+        toast.success('Unpublished. Back to draft');
       } else {
         await db.cookbooks.adminRemove(id);
         toast.success('Cookbook deleted');
@@ -234,7 +236,7 @@ export default function CookbookPanel({ userId, email, onClose }: CookbookPanelP
                       </button>
                     )}
                   </div>
-                  <p className="text-[11px] text-ink-muted truncate">{email}</p>
+                  <p className="text-[11px] text-ink-muted truncate">{fullName ? `${fullName} · ${email}` : email}</p>
                 </>
               )}
             </div>
@@ -327,7 +329,7 @@ export default function CookbookPanel({ userId, email, onClose }: CookbookPanelP
               <p className="text-sm font-medium text-ink">No cookbooks yet</p>
               <p className="text-xs text-ink-muted mt-1 max-w-xs mx-auto">
                 Upload the PDF you made with Claude — it becomes an in-app document with
-                one-tap meal logging for {email}.
+                one-tap meal logging for {displayName}.
               </p>
               <Button variant="primary" size="sm" className="mt-5" onClick={() => pickPdf(null)}>
                 Upload PDF
@@ -367,7 +369,7 @@ export default function CookbookPanel({ userId, email, onClose }: CookbookPanelP
 
       <ConfirmDialog
         open={confirm?.kind === 'publish'}
-        title={`Send to ${email}?`}
+        title={`Send to ${displayName}?`}
         message="They'll get a personal reveal on next open, and every recipe becomes a one-tap preset in their app."
         confirmLabel="Publish"
         onConfirm={handleConfirm}
@@ -375,7 +377,7 @@ export default function CookbookPanel({ userId, email, onClose }: CookbookPanelP
       />
       <ConfirmDialog
         open={confirm?.kind === 'unpublish'}
-        title={`Remove from ${email}'s app?`}
+        title={`Remove from ${displayName}'s app?`}
         message="The cookbook returns to draft and its presets are removed. Their logged history is untouched."
         confirmLabel="Unpublish"
         onConfirm={handleConfirm}

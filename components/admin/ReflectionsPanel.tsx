@@ -29,6 +29,7 @@ import type { DailyReflection, ReflectionStatus, ReflectionVerdict } from '@/typ
 interface ReflectionsPanelProps {
   userId: string;
   email: string;
+  fullName?: string | null;
   /** Opens with this day's transcript expanded (from a ledger "view" marker) */
   focusDate?: string | null;
   onClose: () => void;
@@ -89,7 +90,7 @@ function GroupHeader({ label, count, chipClass, note }: { label: string; count: 
   );
 }
 
-export default function ReflectionsPanel({ userId, email, focusDate, onClose }: ReflectionsPanelProps) {
+export default function ReflectionsPanel({ userId, email, fullName, focusDate, onClose }: ReflectionsPanelProps) {
   const { width: windowWidth } = useWindowDimensions();
   const chartWidth = Math.min(windowWidth - 140, 620);
 
@@ -219,7 +220,9 @@ export default function ReflectionsPanel({ userId, email, focusDate, onClose }: 
         <div className="max-w-3xl mx-auto flex items-center justify-between gap-2">
           <div className="min-w-0">
             <h2 className="text-sm font-semibold tracking-tight text-ink">Reflections</h2>
-            <p className="text-[11px] text-ink-muted truncate">{email}</p>
+            <p className="text-[11px] text-ink-muted truncate">
+              {fullName ? `${fullName} · ${email}` : email}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <SegmentedControl

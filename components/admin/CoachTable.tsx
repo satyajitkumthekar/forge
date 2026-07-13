@@ -103,7 +103,12 @@ export default function CoachTable({
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                         </svg>
                       </button>
-                      <span>{user.email}</span>
+                      <div className="min-w-0">
+                        <div className="truncate">{user.full_name ?? user.email}</div>
+                        {user.full_name && (
+                          <div className="text-xs text-ink-muted font-normal truncate">{user.email}</div>
+                        )}
+                      </div>
                     </div>
                   </td>
                   <td className="px-4 py-4 text-xs text-ink-soft">

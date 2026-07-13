@@ -2,7 +2,7 @@
  * convert-anchor-cookbook - reads a coach's Anchor Meal Cookbook PDF with
  * Claude Opus 4.8 and returns structured cookbook content.
  *
- * Admin-only. The PDF is converted once and never stored (same philosophy
+ * Staff-only (admin or coach). The PDF is converted once and never stored (same philosophy
  * as food images in analyze-food). Structured output (json_schema) means
  * the response text is guaranteed-valid AnchorCookbookContent JSON.
  */
@@ -153,9 +153,10 @@ serve(async (req) => {
       return jsonResponse({ error: 'Not authenticated' }, 401);
     }
 
-    // Coach-only surface
-    const { data: isAdmin, error: adminError } = await supabaseClient.rpc('is_admin');
-    if (adminError || !isAdmin) {
+    // Staff-only surface (admin or coach); cookbook writes are scoped to
+    // the coach's own clients downstream via RLS and the publish RPCs
+    const { data: isStaff, error: staffError } = await supabaseClient.rpc('is_staff');
+    if (staffError || !isStaff) {
       return jsonResponse({ error: 'Not authorized' }, 403);
     }
 

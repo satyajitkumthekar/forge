@@ -165,7 +165,7 @@ export interface RateLimitStatus {
   coach_calls_used: number;
   coach_calls_limit: number;
   resets_at: string;
-  account_type: 'basic' | 'pro' | 'admin';
+  account_type: 'basic' | 'pro' | 'admin' | 'coach';
 }
 
 export interface CoachContext {
@@ -208,7 +208,7 @@ export interface FrequentItem extends Omit<FoodEntry, 'id' | 'entry_date' | 'cre
   itemCount?: number;
 }
 
-export type AccountType = 'basic' | 'pro' | 'admin';
+export type AccountType = 'basic' | 'pro' | 'admin' | 'coach';
 
 export interface UserPositionInfo {
   rank: number;
@@ -232,6 +232,7 @@ export interface DailyMetrics {
 export interface UserMetric {
   user_id: string;
   email: string;
+  full_name: string | null;
   user_rank: number;
   account_type: AccountType;
   food_logs_count: number;
@@ -244,6 +245,10 @@ export interface UserMetric {
   coach_reminder: string | null;
   timezone?: string | null;
   reflections_enabled: boolean;
+  access_granted: boolean;
+  signed_up_at: string | null;
+  /** The coach this client is assigned to; null = the admin's own client */
+  coach_id: string | null;
 }
 
 export interface DailyNutrition {
@@ -254,6 +259,7 @@ export interface DailyNutrition {
 export interface CoachAnalyticsRow {
   user_id: string;
   email: string;
+  full_name: string | null;
   target_calories: number;
   target_protein: number;
   maintenance_calories: number;

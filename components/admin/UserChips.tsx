@@ -106,7 +106,7 @@ export default function UserChips({
                         : 'bg-paper-inset text-ink-soft border border-line hover:bg-paper-deep'
                   }`}
                 >
-                  {user.email}
+                  {user.full_name ?? user.email}
                 </button>
               );
             })}
