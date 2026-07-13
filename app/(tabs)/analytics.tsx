@@ -5,7 +5,6 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { useWindowDimensions } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { db } from '@/lib/database';
@@ -15,20 +14,21 @@ import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { getWeekStart, formatWeekRange, getWeeklyStats } from '@/utils/weekly-stats';
 import { appToday, addDaysYMD } from '@/utils/date';
 import { format, addDays } from 'date-fns';
-import { formatDate, formatLogTime24, getTierColor } from '@/components/admin/helpers';
+import { formatLogTime24, getTierColor } from '@/components/admin/helpers';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { Skeleton, SkeletonRow, SkeletonStat } from '@/components/ui/Skeleton';
 import StatTile from '@/components/admin/StatTile';
 import SectionDisclosure from '@/components/admin/SectionDisclosure';
-import MetricLineChart from '@/components/admin/MetricLineChart';
+import PendingAccess from '@/components/admin/PendingAccess';
+import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import WeekSelector from '@/components/admin/WeekSelector';
 import UserActivityTable from '@/components/admin/UserActivityTable';
 import UserChips from '@/components/admin/UserChips';
 import CoachTable from '@/components/admin/CoachTable';
 import CookbookPanel from '@/components/admin/CookbookPanel';
 import ReflectionsPanel from '@/components/admin/ReflectionsPanel';
-import type { AnalyticsSummary, DailyMetrics, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, WeekReflectionMarker } from '@/types';
+import type { AnalyticsSummary, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, WeekReflectionMarker } from '@/types';
 
 // Cache TTL: 5 minutes (analytics don't need to be real-time)
 const ANALYTICS_CACHE_TTL = 5 * 60 * 1000;
@@ -37,11 +37,8 @@ const getTodayDate = (): string => appToday();
 
 export default function AnalyticsScreen() {
   const { signOut } = useAuth();
-  const { width: windowWidth } = useWindowDimensions();
-  const chartWidth = Math.min(windowWidth - 96, 800);
 
   const [summary, setSummary] = useState<AnalyticsSummary | null>(null);
-  const [dailyMetrics, setDailyMetrics] = useState<DailyMetrics | null>(null);
   const [userMetrics, setUserMetrics] = useState<UserMetric[]>([]);
   const [coachAnalytics, setCoachAnalytics] = useState<CoachAnalyticsRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -57,12 +54,16 @@ export default function AnalyticsScreen() {
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
   const USERS_PER_PAGE = 15;
-  const [isAdmin, setIsAdmin] = useState<boolean | null>(null);
+  // 'admin' sees everything; 'coach' sees only their assigned clients
+  const [role, setRole] = useState<'admin' | 'coach' | null>(null);
   const [adminControlsOpen, setAdminControlsOpen] = useState(false);
-  const [maxAllowedUsers, setMaxAllowedUsers] = useState(100);
-  const [totalActiveUsers, setTotalActiveUsers] = useState(0);
-  const [savedAdminControls, setSavedAdminControls] = useState(false);
   const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(getTodayDate()));
+
+  // Access list: grant/boot toggle busy state + pending delete confirmation
+  const [updatingAccess, setUpdatingAccess] = useState<string | null>(null);
+  const [updatingCoach, setUpdatingCoach] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<UserMetric | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Expandable rows state
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -86,63 +87,55 @@ export default function AnalyticsScreen() {
 
   const checkAdminAndLoadAnalytics = async () => {
     try {
-      // First check if user is admin
+      // Admins get the full dashboard; coaches a scoped clients view
       const status = await db.rateLimit.getStatus();
-      const userIsAdmin = status.account_type === 'admin';
-      setIsAdmin(userIsAdmin);
+      const userRole =
+        status.account_type === 'admin' ? 'admin'
+        : status.account_type === 'coach' ? 'coach'
+        : null;
+      setRole(userRole);
 
-      if (!userIsAdmin) {
+      if (!userRole) {
         setLoading(false);
-        setError('Access denied: Admin privileges required to view analytics');
+        setError('Access denied: staff privileges required to view this page');
         return;
       }
 
-      // User is admin, proceed to load analytics
-      await loadAnalytics();
+      await loadAnalytics(false, userRole);
     } catch (err: any) {
-      console.error('[Analytics] Error checking admin status:', err);
-      setIsAdmin(false);
+      console.error('[Analytics] Error checking role:', err);
+      setRole(null);
       setLoading(false);
-      setError('Access denied: Admin privileges required to view analytics');
+      setError('Access denied: staff privileges required to view this page');
     }
   };
 
-  const loadAnalytics = async (forceRefresh = false) => {
+  const loadAnalytics = async (forceRefresh = false, roleParam?: 'admin' | 'coach') => {
+    const effectiveRole = roleParam ?? role;
+    if (!effectiveRole) {
+      setLoading(false);
+      setError('Access denied: staff privileges required to view this page');
+      return;
+    }
+
     try {
       setError(null);
-
-      // Check admin status first (unless already checked)
-      if (isAdmin === null) {
-        const status = await db.rateLimit.getStatus();
-        const userIsAdmin = status.account_type === 'admin';
-        setIsAdmin(userIsAdmin);
-
-        if (!userIsAdmin) {
-          setLoading(false);
-          setError('Access denied: Admin privileges required to view analytics');
-          return;
-        }
-      } else if (isAdmin === false) {
-        setLoading(false);
-        setError('Access denied: Admin privileges required to view analytics');
-        return;
-      }
 
       // PHASE 1: Load from cache - INSTANT (skip if force refresh)
       if (!forceRefresh) {
         const cachedData = getCached<{
-          summary: AnalyticsSummary;
-          metrics: DailyMetrics;
+          summary: AnalyticsSummary | null;
           users: UserMetric[];
           coach: CoachAnalyticsRow[];
+          weekReflections?: WeekReflectionMarker[];
         }>(CACHE_KEYS.analytics);
 
         if (cachedData) {
           // Show cached data immediately (no loading spinner!)
           setSummary(cachedData.summary);
-          setDailyMetrics(cachedData.metrics);
           setUserMetrics(cachedData.users);
           setCoachAnalytics(cachedData.coach);
+          setWeekReflections(cachedData.weekReflections ?? []);
           setLoading(false);
 
           // Initialize selected users from cache
@@ -157,11 +150,12 @@ export default function AnalyticsScreen() {
         setLoading(true);
       }
 
-      // PHASE 2: Fetch fresh data (revalidate in background)
+      // PHASE 2: Fetch fresh data (revalidate in background).
+      // App-wide numbers are admin-only RPCs; a coach's dashboard doesn't
+      // show them, so don't call them (they would throw).
+      const isAdminRole = effectiveRole === 'admin';
 
-      const summaryData = await db.analytics.getSummary();
-
-      const metricsData = await db.analytics.getDailyMetrics(30);
+      const summaryData = isAdminRole ? await db.analytics.getSummary() : null;
 
       const usersData = await db.analytics.getUserMetrics();
 
@@ -176,13 +170,6 @@ export default function AnalyticsScreen() {
       } catch (err) {
         console.error('[Analytics] Error loading week reflections:', err);
       }
-
-      const [maxUsers, totalUsers] = await Promise.all([
-        db.admin.getMaxAllowedUsers(),
-        db.admin.getTotalActiveUsers(),
-      ]);
-      setMaxAllowedUsers(maxUsers);
-      setTotalActiveUsers(totalUsers);
 
       // Use the same getWeeklyStats utility as the dashboard for consistency
       const coachData = await Promise.all(
@@ -239,16 +226,15 @@ export default function AnalyticsScreen() {
         CACHE_KEYS.analytics,
         {
           summary: summaryData,
-          metrics: metricsData,
           users: usersData,
           coach: coachData,
+          weekReflections: weekReflectionData,
         },
         ANALYTICS_CACHE_TTL
       );
 
       // Update UI silently (data already showing if cached)
       setSummary(summaryData);
-      setDailyMetrics(metricsData);
       setUserMetrics(usersData);
       setCoachAnalytics(coachData);
       setWeekReflections(weekReflectionData);
@@ -271,7 +257,7 @@ export default function AnalyticsScreen() {
     }
   };
 
-  const handleTierChange = async (userId: string, newTier: 'basic' | 'pro' | 'admin') => {
+  const handleTierChange = async (userId: string, newTier: 'basic' | 'pro' | 'admin' | 'coach') => {
     setUpdatingTier(userId);
     try {
       await db.analytics.updateUserTier(userId, newTier);
@@ -296,6 +282,21 @@ export default function AnalyticsScreen() {
       console.error('Error toggling client flag:', err);
     } finally {
       setUpdatingClient(null);
+    }
+  };
+
+  const handleCoachAssign = async (userId: string, coachId: string | null) => {
+    setUpdatingCoach(userId);
+    try {
+      await db.analytics.assignCoach(userId, coachId);
+
+      // Reload analytics and update cache
+      await loadAnalytics(true); // Force refresh to clear cache
+    } catch (err) {
+      console.error('Error assigning coach:', err);
+      toast.error('Failed to assign coach');
+    } finally {
+      setUpdatingCoach(null);
     }
   };
 
@@ -375,13 +376,34 @@ export default function AnalyticsScreen() {
     }
   };
 
-  const handleSaveAdminControls = async () => {
+  const handleAccessToggle = async (userId: string, currentValue: boolean) => {
+    setUpdatingAccess(userId);
     try {
-      await db.admin.updateMaxAllowedUsers(maxAllowedUsers);
-      setSavedAdminControls(true);
-      setTimeout(() => setSavedAdminControls(false), 2000);
+      await db.analytics.setAccess(userId, !currentValue);
+
+      // Reload analytics and update cache
+      await loadAnalytics(true); // Force refresh to clear cache
     } catch (err) {
-      console.error('Error saving admin controls:', err);
+      console.error('Error updating access:', err);
+      toast.error('Failed to update access');
+    } finally {
+      setUpdatingAccess(null);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      await db.analytics.deleteUser(deleteTarget.user_id);
+      toast.success(`${deleteTarget.full_name ?? deleteTarget.email} deleted`);
+      setDeleteTarget(null);
+      await loadAnalytics(true); // Force refresh to clear cache
+    } catch (err: any) {
+      console.error('Error deleting user:', err);
+      toast.error(err?.message || 'Failed to delete account');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -601,7 +623,8 @@ export default function AnalyticsScreen() {
     );
   }
 
-  if (loading || !summary || !dailyMetrics) {
+  // Coaches never have the app-wide summary; only admins wait on it
+  if (loading || !role || (role === 'admin' && !summary)) {
     return (
       <div className="h-[calc(100dvh-var(--safe-top))] overflow-y-auto bg-paper p-3 md:p-4">
         <div className="max-w-7xl mx-auto">
@@ -675,12 +698,21 @@ export default function AnalyticsScreen() {
     return dateStr === addDaysYMD(today, -1) ? 'in_progress' : 'missed';
   };
 
+  // New signups (and booted users) awaiting an access grant
+  const pendingUsers = userMetrics.filter(user => !user.access_granted);
+
+  // Coach-tier users for the assignment dropdown
+  const coachOptions = userMetrics
+    .filter(user => user.account_type === 'coach')
+    .map(user => ({ user_id: user.user_id, label: user.full_name ?? user.email }));
+
   // Search and sort user metrics
   const filteredAndSortedUserMetrics = userMetrics
-    // Filter by search query
+    // Filter by search query (name or email)
     .filter(user =>
       searchQuery === '' ||
-      user.email.toLowerCase().includes(searchQuery.toLowerCase())
+      user.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (user.full_name ?? '').toLowerCase().includes(searchQuery.toLowerCase())
     )
     // Sort by: 1) client status (true first), 2) food logs count (descending)
     .sort((a, b) => {
@@ -705,8 +737,14 @@ export default function AnalyticsScreen() {
         {/* Sticky frosted header */}
         <div className="sticky top-0 z-30 -mx-3 md:-mx-4 px-4 md:px-6 py-3 bg-paper/85 backdrop-blur-md border-b border-line/70 flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-semibold tracking-tight text-ink">Admin</h1>
-            <p className="text-[11px] text-ink-muted">System-wide metrics and user management</p>
+            <h1 className="text-lg font-semibold tracking-tight text-ink">
+              {role === 'coach' ? 'Clients' : 'Admin'}
+            </h1>
+            <p className="text-[11px] text-ink-muted">
+              {role === 'coach'
+                ? 'Weekly tracking for your assigned clients'
+                : 'System-wide metrics and user management'}
+            </p>
           </div>
           <div className="flex items-center gap-1">
             <Button variant="secondary" size="sm" onClick={() => loadAnalytics(true)}>
@@ -735,40 +773,40 @@ export default function AnalyticsScreen() {
         </div>
 
         {/* Stat row */}
-        <div className="grid grid-cols-3 gap-3 mt-4">
-          <StatTile label="Users" value={summary.totalUsers} />
-          <StatTile label="Food Logs" value={summary.totalFoodLogs} />
-          <StatTile label="Coach Calls" value={summary.totalCoachCalls} />
-        </div>
+        {role === 'admin' && summary && (
+          <div className="grid grid-cols-3 gap-3 mt-4">
+            <StatTile label="Users" value={summary.totalUsers} />
+            <StatTile label="Food Logs" value={summary.totalFoodLogs} />
+            <StatTile label="Coach Calls" value={summary.totalCoachCalls} />
+          </div>
+        )}
+
+        {/* The doorman's inbox: signups awaiting an access grant */}
+        {role === 'admin' && (
+          <div className="mt-4">
+            <PendingAccess
+              users={pendingUsers}
+              busyUserId={updatingAccess}
+              onGrant={(userId) => handleAccessToggle(userId, false)}
+              onDelete={(user) => setDeleteTarget(user)}
+            />
+          </div>
+        )}
 
         {/* SECTION 0: Admin Controls (Collapsible) */}
+        {role === 'admin' && (
         <div className="mt-4">
           <SectionDisclosure
             title="Admin Controls"
-            subtitle="User access management"
+            subtitle="Tier limits"
             open={adminControlsOpen}
             onToggle={() => setAdminControlsOpen(!adminControlsOpen)}
             accentDot
           >
             <div className="bg-paper-raised rounded-card border border-line p-6 shadow-card">
               <div className="space-y-6">
-                {/* User Access Limit */}
-                <div>
-                  <Input
-                    label="User Access Limit"
-                    unit="users"
-                    type="number"
-                    value={maxAllowedUsers}
-                    onChange={(e) => setMaxAllowedUsers(parseInt(e.target.value) || 0)}
-                  />
-                  <p className="mt-1 text-xs text-ink-muted">
-                    <span className="font-semibold">{totalActiveUsers}</span> of{' '}
-                    <span className="font-semibold">{maxAllowedUsers}</span> users have access
-                  </p>
-                </div>
-
                 {/* Tier API Limits */}
-                <div className="pt-4 border-t border-line">
+                <div>
                   <h3 className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-3">
                     Tier API Call Limits (Daily)
                   </h3>
@@ -819,52 +857,22 @@ export default function AnalyticsScreen() {
                     </div>
                   </div>
                 </div>
-
-                <Button variant="primary" fullWidth onClick={handleSaveAdminControls}>
-                  {savedAdminControls ? '✓ Saved!' : 'Save'}
-                </Button>
               </div>
             </div>
           </SectionDisclosure>
         </div>
+        )}
 
-        {/* SECTION 1: App Analytics (Collapsible) */}
+        {/* SECTION 1: User Control (Collapsible, admin only) */}
+        {role === 'admin' && (
         <div className="mt-4">
           <SectionDisclosure
-            title="App Analytics"
-            subtitle="System metrics and user management"
+            title="User Control"
+            subtitle="User management"
             open={appAnalyticsOpen}
             onToggle={() => setAppAnalyticsOpen(!appAnalyticsOpen)}
           >
             <div className="space-y-4">
-              {/* Analytics Charts */}
-              <MetricLineChart
-                title="Daily Active Users (Last 30 Days)"
-                data={dailyMetrics.dailyActiveUsers.map(item => ({
-                  value: item.user_count,
-                  label: formatDate(item.date)
-                }))}
-                width={chartWidth}
-              />
-
-              <MetricLineChart
-                title="Daily Food Logs (Last 30 Days)"
-                data={dailyMetrics.dailyFoodLogs.map(item => ({
-                  value: item.log_count,
-                  label: formatDate(item.date)
-                }))}
-                width={chartWidth}
-              />
-
-              <MetricLineChart
-                title="Daily Coach Calls (Last 30 Days)"
-                data={dailyMetrics.dailyCoachCalls.map(item => ({
-                  value: item.call_count,
-                  label: formatDate(item.date)
-                }))}
-                width={chartWidth}
-              />
-
               {/* User Metrics Table */}
               <UserActivityTable
                 users={paginatedUserMetrics}
@@ -880,18 +888,26 @@ export default function AnalyticsScreen() {
                 totalPages={totalPages}
                 onPrevPage={() => setCurrentPage(prev => Math.max(1, prev - 1))}
                 onNextPage={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                viewerRole="admin"
+                coaches={coachOptions}
                 updatingTier={updatingTier}
                 updatingClient={updatingClient}
                 updatingReflections={updatingReflections}
+                updatingAccess={updatingAccess}
+                updatingCoach={updatingCoach}
                 updatingMacros={updatingMacros}
                 onTierChange={handleTierChange}
                 onClientToggle={handleClientToggle}
                 onReflectionsToggle={handleReflectionsToggle}
+                onAccessToggle={handleAccessToggle}
+                onCoachAssign={handleCoachAssign}
+                onDeleteUser={(user) => setDeleteTarget(user)}
                 onMacroUpdate={handleMacroUpdate}
               />
             </div>
           </SectionDisclosure>
         </div>
+        )}
 
         {/* SECTION 2: Coach Analytics (Main Section) */}
         <div className="mt-4 bg-paper-raised rounded-card border border-line shadow-card overflow-hidden">
@@ -957,12 +973,49 @@ export default function AnalyticsScreen() {
             />
           )}
         </div>
+
+        {/* Coach view: a slim client table for macros + practice management */}
+        {role === 'coach' && (
+          <div className="mt-4">
+            <UserActivityTable
+              users={paginatedUserMetrics}
+              filteredCount={filteredAndSortedUserMetrics.length}
+              totalCount={userMetrics.length}
+              usersPerPage={USERS_PER_PAGE}
+              searchQuery={searchQuery}
+              onSearchChange={(value) => {
+                setSearchQuery(value);
+                setCurrentPage(1); // Reset to first page on search
+              }}
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPrevPage={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+              onNextPage={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+              viewerRole="coach"
+              coaches={[]}
+              updatingTier={updatingTier}
+              updatingClient={updatingClient}
+              updatingReflections={updatingReflections}
+              updatingAccess={updatingAccess}
+              updatingCoach={updatingCoach}
+              updatingMacros={updatingMacros}
+              onTierChange={handleTierChange}
+              onClientToggle={handleClientToggle}
+              onReflectionsToggle={handleReflectionsToggle}
+              onAccessToggle={handleAccessToggle}
+              onCoachAssign={handleCoachAssign}
+              onDeleteUser={(user) => setDeleteTarget(user)}
+              onMacroUpdate={handleMacroUpdate}
+            />
+          </div>
+        )}
       </div>
 
       {cookbookUser && (
         <CookbookPanel
           userId={cookbookUser.id}
           email={cookbookUser.email}
+          fullName={userMetrics.find(u => u.user_id === cookbookUser.id)?.full_name ?? null}
           onClose={() => setCookbookUser(null)}
         />
       )}
@@ -971,10 +1024,21 @@ export default function AnalyticsScreen() {
         <ReflectionsPanel
           userId={reflectionsUser.id}
           email={reflectionsUser.email}
+          fullName={userMetrics.find(u => u.user_id === reflectionsUser.id)?.full_name ?? null}
           focusDate={reflectionsUser.focusDate ?? null}
           onClose={() => setReflectionsUser(null)}
         />
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={`Delete ${deleteTarget?.full_name ?? deleteTarget?.email ?? ''}?`}
+        message="This permanently deletes the account and every log, meal, cookbook and reflection attached to it. There is no undo."
+        confirmLabel={deleting ? 'Deleting…' : 'Delete forever'}
+        destructive
+        onConfirm={handleDeleteUser}
+        onCancel={() => !deleting && setDeleteTarget(null)}
+      />
     </div>
   );
 }
