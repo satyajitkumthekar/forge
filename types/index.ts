@@ -133,6 +133,16 @@ export interface DailyReflection {
   updated_at: string;
 }
 
+/** An entry code with limited uses, redeemable from the holding screen */
+export interface AccessPass {
+  id: string;
+  code: string;
+  max_uses: number;
+  uses_remaining: number;
+  active: boolean;
+  created_at: string;
+}
+
 /** Slim per-day row for the coach ledger markers (get_week_reflections) */
 export interface WeekReflectionMarker {
   user_id: string;

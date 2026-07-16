@@ -21,6 +21,7 @@ import type {
   ReflectionPath,
   ReflectionFailReason,
   WeekReflectionMarker,
+  AccessPass,
 } from '../types';
 
 /**
@@ -669,6 +670,19 @@ export const db = {
     },
 
     /**
+     * Try an access code from the holding screen. True = the caller now
+     * has access; false covers invalid, switched-off and used-up codes
+     * alike (no probing which codes exist).
+     */
+    redeemPass: async (code: string): Promise<boolean> => {
+      const { data, error } = await supabase
+        .rpc('redeem_access_pass', { p_code: code });
+
+      if (error) throw error;
+      return Boolean(data);
+    },
+
+    /**
      * Get the signed-in user's full name (null = never provided; the
      * required NamePrompt fires until it exists)
      */
@@ -1025,6 +1039,37 @@ export const db = {
 
       if (error) throw error;
       return data;
+    },
+
+    // ---- Access passes: entry codes with limited uses ----
+
+    listPasses: async (): Promise<AccessPass[]> => {
+      const { data, error } = await supabase.rpc('get_access_passes');
+
+      if (error) throw error;
+      return data || [];
+    },
+
+    createPass: async (code: string, maxUses: number): Promise<AccessPass> => {
+      const { data, error } = await supabase
+        .rpc('admin_create_access_pass', { p_code: code, p_max_uses: maxUses });
+
+      if (error) throw error;
+      return (data as AccessPass[])[0];
+    },
+
+    setPassActive: async (id: string, active: boolean): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_set_pass_active', { p_id: id, p_active: active });
+
+      if (error) throw error;
+    },
+
+    deletePass: async (id: string): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_delete_access_pass', { p_id: id });
+
+      if (error) throw error;
     },
   },
 };

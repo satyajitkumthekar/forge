@@ -21,6 +21,7 @@ import { Skeleton, SkeletonRow, SkeletonStat } from '@/components/ui/Skeleton';
 import StatTile from '@/components/admin/StatTile';
 import SectionDisclosure from '@/components/admin/SectionDisclosure';
 import PendingAccess from '@/components/admin/PendingAccess';
+import AccessPasses from '@/components/admin/AccessPasses';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import WeekSelector from '@/components/admin/WeekSelector';
 import UserActivityTable from '@/components/admin/UserActivityTable';
@@ -28,7 +29,7 @@ import UserChips from '@/components/admin/UserChips';
 import CoachTable from '@/components/admin/CoachTable';
 import CookbookPanel from '@/components/admin/CookbookPanel';
 import ReflectionsPanel from '@/components/admin/ReflectionsPanel';
-import type { AnalyticsSummary, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, WeekReflectionMarker } from '@/types';
+import type { AnalyticsSummary, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, WeekReflectionMarker, AccessPass } from '@/types';
 
 // Cache TTL: 5 minutes (analytics don't need to be real-time)
 const ANALYTICS_CACHE_TTL = 5 * 60 * 1000;
@@ -64,6 +65,11 @@ export default function AnalyticsScreen() {
   const [updatingCoach, setUpdatingCoach] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserMetric | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Access passes: entry codes with limited uses
+  const [accessPasses, setAccessPasses] = useState<AccessPass[]>([]);
+  const [passBusy, setPassBusy] = useState<string | null>(null);
+  const [creatingPass, setCreatingPass] = useState(false);
 
   // Expandable rows state
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -156,6 +162,15 @@ export default function AnalyticsScreen() {
       const isAdminRole = effectiveRole === 'admin';
 
       const summaryData = isAdminRole ? await db.analytics.getSummary() : null;
+
+      // Small and mutation-driven, so fetched fresh rather than cached
+      if (isAdminRole) {
+        try {
+          setAccessPasses(await db.admin.listPasses());
+        } catch (err) {
+          console.error('[Analytics] Error loading access passes:', err);
+        }
+      }
 
       const usersData = await db.analytics.getUserMetrics();
 
@@ -282,6 +297,47 @@ export default function AnalyticsScreen() {
       console.error('Error toggling client flag:', err);
     } finally {
       setUpdatingClient(null);
+    }
+  };
+
+  const handleCreatePass = async (code: string, maxUses: number): Promise<boolean> => {
+    setCreatingPass(true);
+    try {
+      await db.admin.createPass(code, maxUses);
+      setAccessPasses(await db.admin.listPasses());
+      return true;
+    } catch (err: any) {
+      console.error('Error creating pass:', err);
+      toast.error(err?.message || 'Failed to create the pass');
+      return false;
+    } finally {
+      setCreatingPass(false);
+    }
+  };
+
+  const handleTogglePass = async (pass: AccessPass) => {
+    setPassBusy(pass.id);
+    try {
+      await db.admin.setPassActive(pass.id, !pass.active);
+      setAccessPasses(await db.admin.listPasses());
+    } catch (err) {
+      console.error('Error toggling pass:', err);
+      toast.error('Failed to update the pass');
+    } finally {
+      setPassBusy(null);
+    }
+  };
+
+  const handleDeletePass = async (pass: AccessPass) => {
+    setPassBusy(pass.id);
+    try {
+      await db.admin.deletePass(pass.id);
+      setAccessPasses(await db.admin.listPasses());
+    } catch (err) {
+      console.error('Error deleting pass:', err);
+      toast.error('Failed to delete the pass');
+    } finally {
+      setPassBusy(null);
     }
   };
 
@@ -789,6 +845,20 @@ export default function AnalyticsScreen() {
               busyUserId={updatingAccess}
               onGrant={(userId) => handleAccessToggle(userId, false)}
               onDelete={(user) => setDeleteTarget(user)}
+            />
+          </div>
+        )}
+
+        {/* Entry codes with limited uses */}
+        {role === 'admin' && (
+          <div className="mt-4">
+            <AccessPasses
+              passes={accessPasses}
+              busyId={passBusy}
+              creating={creatingPass}
+              onCreate={handleCreatePass}
+              onToggleActive={handleTogglePass}
+              onDelete={handleDeletePass}
             />
           </div>
         )}
