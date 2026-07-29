@@ -34,9 +34,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Check active session
     supabase.auth
       .getSession()
-      .then(({ data: { session } }) => {
-        setCacheUser(session?.user?.id ?? null);
-        setUser(session?.user ?? null);
+      .then(async ({ data: { session } }) => {
+        let activeSession = session;
+        if (session) {
+          // A restored session can point at a deleted account or a revoked
+          // token, and the stored expiry can't be trusted (it was computed
+          // with the device clock). Ask the server before accepting it, but
+          // only drop the session on an explicit rejection — a network
+          // failure here must not sign out an offline user.
+          const { error: userError } = await supabase.auth.getUser();
+          const status = (userError as { status?: number } | null)?.status;
+          if (status === 401 || status === 403) {
+            // A merely stale token heals with a server-checked renewal;
+            // only a dead session (deleted account, revoked refresh token)
+            // fails it and warrants signing out
+            const { data: refreshData, error: refreshError } =
+              await supabase.auth.refreshSession();
+            if (refreshError || !refreshData.session) {
+              await supabase.auth.signOut();
+              setCacheUser(null);
+              setUser(null);
+              setLoading(false);
+              return;
+            }
+            activeSession = refreshData.session;
+          }
+        }
+        setCacheUser(activeSession?.user?.id ?? null);
+        setUser(activeSession?.user ?? null);
         setLoading(false);
       })
       .catch((err) => {

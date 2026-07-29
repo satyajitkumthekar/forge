@@ -8,10 +8,12 @@ import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import type { CoachContext, AnchorCookbookContent } from '../types';
 
+const SESSION_EXPIRED_MESSAGE = 'Your session is no longer valid. Please sign in again.';
+
 /**
  * Helper function to make Supabase Function requests
  */
-const invokeFunction = async <T>(functionName: string, body: any): Promise<T> => {
+const invokeFunction = async <T>(functionName: string, body: any, hasRetried = false): Promise<T> => {
   try {
     const { data, error } = await supabase.functions.invoke(functionName, {
       body,
@@ -21,6 +23,21 @@ const invokeFunction = async <T>(functionName: string, body: any): Promise<T> =>
       // Non-2xx responses surface as a generic "non-2xx status code" —
       // the function's actual { error } body lives on error.context
       if (error instanceof FunctionsHttpError) {
+        // 401 means the stored access token was rejected server-side. The
+        // client can't detect this locally (its expiry check trusts the
+        // device clock), so force a server-validated refresh and retry once.
+        // If the session can't refresh it's dead (deleted account, revoked
+        // refresh token) — sign out cleanly instead of erroring forever.
+        if (error.context.status === 401) {
+          if (!hasRetried) {
+            const { error: refreshError } = await supabase.auth.refreshSession();
+            if (!refreshError) {
+              return invokeFunction<T>(functionName, body, true);
+            }
+          }
+          await supabase.auth.signOut();
+          throw new Error(SESSION_EXPIRED_MESSAGE);
+        }
         let detail: string | undefined;
         try {
           const errorBody = await error.context.json();
