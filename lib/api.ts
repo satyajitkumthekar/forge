@@ -9,6 +9,15 @@ import { supabase } from './supabase';
 import type { CoachContext, AnchorCookbookContent } from '../types';
 
 const SESSION_EXPIRED_MESSAGE = 'Your session is no longer valid. Please sign in again.';
+const SERVER_REJECTED_MESSAGE = 'The server could not verify your login just now. Please try again in a moment.';
+
+// A refresh failure only proves the session is dead when the auth server
+// explicitly rejected it. Network failures and server errors are transient
+// and must never log the user out.
+const isSessionDead = (refreshError: unknown): boolean => {
+  const status = (refreshError as { status?: number } | null)?.status;
+  return status === 400 || status === 401 || status === 403 || status === 404;
+};
 
 /**
  * Helper function to make Supabase Function requests
@@ -23,20 +32,27 @@ const invokeFunction = async <T>(functionName: string, body: any, hasRetried = f
       // Non-2xx responses surface as a generic "non-2xx status code" —
       // the function's actual { error } body lives on error.context
       if (error instanceof FunctionsHttpError) {
-        // 401 means the stored access token was rejected server-side. The
-        // client can't detect this locally (its expiry check trusts the
-        // device clock), so force a server-validated refresh and retry once.
-        // If the session can't refresh it's dead (deleted account, revoked
-        // refresh token) — sign out cleanly instead of erroring forever.
+        // 401 means the access token was rejected server-side. The client
+        // can't detect this locally (its expiry check trusts the device
+        // clock), so force a server-validated refresh and retry once.
+        // Sign out ONLY when the auth server explicitly declares the session
+        // dead. A 401 that persists after a successful refresh means the
+        // session is alive and something between us and the function is
+        // rejecting valid tokens (seen with the AU edge gateway) — that must
+        // surface as a retryable error, never as a sign-out.
         if (error.context.status === 401) {
-          if (!hasRetried) {
-            const { error: refreshError } = await supabase.auth.refreshSession();
-            if (!refreshError) {
-              return invokeFunction<T>(functionName, body, true);
-            }
+          if (hasRetried) {
+            throw new Error(SERVER_REJECTED_MESSAGE);
           }
-          await supabase.auth.signOut();
-          throw new Error(SESSION_EXPIRED_MESSAGE);
+          const { error: refreshError } = await supabase.auth.refreshSession();
+          if (!refreshError) {
+            return invokeFunction<T>(functionName, body, true);
+          }
+          if (isSessionDead(refreshError)) {
+            await supabase.auth.signOut({ scope: 'local' });
+            throw new Error(SESSION_EXPIRED_MESSAGE);
+          }
+          throw new Error(SERVER_REJECTED_MESSAGE);
         }
         let detail: string | undefined;
         try {

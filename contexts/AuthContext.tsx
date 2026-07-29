@@ -45,19 +45,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const { error: userError } = await supabase.auth.getUser();
           const status = (userError as { status?: number } | null)?.status;
           if (status === 401 || status === 403) {
-            // A merely stale token heals with a server-checked renewal;
-            // only a dead session (deleted account, revoked refresh token)
-            // fails it and warrants signing out
+            // A merely stale token heals with a server-checked renewal. Sign
+            // out ONLY when the auth server explicitly rejects the renewal
+            // (deleted account, revoked refresh token) — and only on this
+            // device. A transient renewal failure keeps the session.
             const { data: refreshData, error: refreshError } =
               await supabase.auth.refreshSession();
-            if (refreshError || !refreshData.session) {
-              await supabase.auth.signOut();
+            const refreshStatus = (refreshError as { status?: number } | null)?.status;
+            const sessionDead =
+              refreshStatus === 400 || refreshStatus === 401 ||
+              refreshStatus === 403 || refreshStatus === 404;
+            if (sessionDead) {
+              await supabase.auth.signOut({ scope: 'local' });
               setCacheUser(null);
               setUser(null);
               setLoading(false);
               return;
             }
-            activeSession = refreshData.session;
+            if (refreshData?.session) {
+              activeSession = refreshData.session;
+            }
           }
         }
         setCacheUser(activeSession?.user?.id ?? null);
