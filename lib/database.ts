@@ -999,7 +999,13 @@ export const db = {
         });
 
       if (error) throw error;
-      return data || [];
+      // The RPC orders by email; sort by what the UI displays (name, email
+      // for the nameless) so the user chips and coach table read A to Z
+      return (data || []).sort((a: CoachAnalyticsRow, b: CoachAnalyticsRow) =>
+        (a.full_name ?? a.email).localeCompare(b.full_name ?? b.email, undefined, {
+          sensitivity: 'base',
+        })
+      );
     },
   },
 
