@@ -17,6 +17,9 @@ interface QueuedOperation {
   items?: FoodItemInput[];
   /** add_meal: stamps entries so Quick Add collapses them into a meal chip */
   mealId?: string;
+  /** add_meal: meal segment + log time, so the synced rows keep their place */
+  mealGroupId?: string;
+  createdAt?: string;
   timestamp: number;
 }
 
@@ -58,7 +61,12 @@ export const processQueue = async (): Promise<void> => {
       } else if (op.type === 'delete_entry') {
         await db.food.delete(op.entryId!);
       } else if (op.type === 'add_meal') {
-        await db.food.addMany(op.date, op.items!, op.mealId);
+        await db.food.addMany(
+          op.date,
+          op.items!,
+          op.mealId,
+          op.mealGroupId ? { mealGroupId: op.mealGroupId, createdAt: op.createdAt } : undefined
+        );
       }
     } catch (error) {
       console.error(`[Queue] Failed to process ${op.type}:`, error);

@@ -9,9 +9,11 @@ import type { FrequentItem } from '@/types';
 interface FrequentItemsProps {
   items: FrequentItem[];
   onItemClick: (item: FrequentItem) => void;
+  /** Coach has hidden calorie & protein numbers */
+  hideMacros?: boolean;
 }
 
-export default function FrequentItems({ items, onItemClick }: FrequentItemsProps) {
+export default function FrequentItems({ items, onItemClick, hideMacros = false }: FrequentItemsProps) {
   if (!items || items.length === 0) return null;
 
   return (
@@ -39,9 +41,15 @@ export default function FrequentItems({ items, onItemClick }: FrequentItemsProps
                   <span className="text-sm font-medium text-ink truncate max-w-[160px]">
                     {item.name}
                   </span>
-                  <span className="text-xs text-ink-muted tabular-nums">
-                    {isMeal ? `${item.itemCount} items · ` : ''}{item.calories} cal · {item.protein}g pro
-                  </span>
+                  {hideMacros ? (
+                    isMeal && (
+                      <span className="text-xs text-ink-muted tabular-nums">{item.itemCount} items</span>
+                    )
+                  ) : (
+                    <span className="text-xs text-ink-muted tabular-nums">
+                      {isMeal ? `${item.itemCount} items · ` : ''}{item.calories} cal · {item.protein}g pro
+                    </span>
+                  )}
                 </div>
                 <svg
                   className="w-4 h-4 text-ink-faint group-hover:text-ink-soft flex-shrink-0"

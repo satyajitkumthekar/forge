@@ -47,6 +47,7 @@ export default function AnalyticsScreen() {
   const [updatingTier, setUpdatingTier] = useState<string | null>(null);
   const [updatingClient, setUpdatingClient] = useState<string | null>(null);
   const [updatingReflections, setUpdatingReflections] = useState<string | null>(null);
+  const [updatingMacrosHidden, setUpdatingMacrosHidden] = useState<string | null>(null);
   const [updatingMacros, setUpdatingMacros] = useState<string | null>(null);
   const [updatingReminder, setUpdatingReminder] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -353,6 +354,21 @@ export default function AnalyticsScreen() {
       toast.error('Failed to assign coach');
     } finally {
       setUpdatingCoach(null);
+    }
+  };
+
+  const handleMacrosHiddenToggle = async (userId: string, currentValue: boolean) => {
+    setUpdatingMacrosHidden(userId);
+    try {
+      await db.analytics.setMacrosHidden(userId, !currentValue);
+
+      // Reload analytics and update cache
+      await loadAnalytics(true); // Force refresh to clear cache
+    } catch (err) {
+      console.error('Error toggling macros visibility:', err);
+      toast.error('Could not update. Please try again.');
+    } finally {
+      setUpdatingMacrosHidden(null);
     }
   };
 
@@ -963,12 +979,14 @@ export default function AnalyticsScreen() {
                 updatingTier={updatingTier}
                 updatingClient={updatingClient}
                 updatingReflections={updatingReflections}
+                updatingMacrosHidden={updatingMacrosHidden}
                 updatingAccess={updatingAccess}
                 updatingCoach={updatingCoach}
                 updatingMacros={updatingMacros}
                 onTierChange={handleTierChange}
                 onClientToggle={handleClientToggle}
                 onReflectionsToggle={handleReflectionsToggle}
+                onMacrosHiddenToggle={handleMacrosHiddenToggle}
                 onAccessToggle={handleAccessToggle}
                 onCoachAssign={handleCoachAssign}
                 onDeleteUser={(user) => setDeleteTarget(user)}
@@ -1066,12 +1084,14 @@ export default function AnalyticsScreen() {
               updatingTier={updatingTier}
               updatingClient={updatingClient}
               updatingReflections={updatingReflections}
+              updatingMacrosHidden={updatingMacrosHidden}
               updatingAccess={updatingAccess}
               updatingCoach={updatingCoach}
               updatingMacros={updatingMacros}
               onTierChange={handleTierChange}
               onClientToggle={handleClientToggle}
               onReflectionsToggle={handleReflectionsToggle}
+              onMacrosHiddenToggle={handleMacrosHiddenToggle}
               onAccessToggle={handleAccessToggle}
               onCoachAssign={handleCoachAssign}
               onDeleteUser={(user) => setDeleteTarget(user)}

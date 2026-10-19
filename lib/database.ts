@@ -94,7 +94,10 @@ export const db = {
     /**
      * Add a new food entry
      */
-    add: async (date: string, entry: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>): Promise<FoodEntry> => {
+    add: async (
+      date: string,
+      entry: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'> & { created_at?: string }
+    ): Promise<FoodEntry> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -116,8 +119,15 @@ export const db = {
      * Batch-insert entries for a date. When mealId is set (adding a saved
      * meal), every row is stamped so Quick Add can collapse them into one
      * meal chip. Entries remain individual rows — editable/deletable alone.
+     * mealGroupId puts them all in one meal segment; when omitted, the DB
+     * trigger assigns one by the 60-minute rule.
      */
-    addMany: async (date: string, items: FoodItemInput[], mealId?: string): Promise<FoodEntry[]> => {
+    addMany: async (
+      date: string,
+      items: FoodItemInput[],
+      mealId?: string,
+      group?: { mealGroupId: string; createdAt?: string }
+    ): Promise<FoodEntry[]> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -129,6 +139,8 @@ export const db = {
         protein: item.protein,
         description: item.description ?? null,
         meal_id: mealId ?? null,
+        ...(group ? { meal_group_id: group.mealGroupId } : {}),
+        ...(group?.createdAt ? { created_at: group.createdAt } : {}),
       }));
 
       const { data, error } = await supabase
@@ -727,6 +739,25 @@ export const db = {
       if (error) return null;
       return data?.coach_reminder || null;
     },
+
+    /**
+     * Whether staff have hidden calorie & protein numbers from this user.
+     * Throws on failure so callers keep the last known value instead of
+     * flashing numbers on a network blip.
+     */
+    getMacrosHidden: async (): Promise<boolean> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('macros_hidden')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+      return data?.macros_hidden === true;
+    },
   },
 
   // ============================================
@@ -935,6 +966,19 @@ export const db = {
         .rpc('admin_toggle_reflections', {
           target_user_id: userId,
           new_enabled_value: enabled,
+        });
+
+      if (error) throw error;
+    },
+
+    /**
+     * Hide or reveal calorie & protein numbers in a client's app (staff only)
+     */
+    setMacrosHidden: async (userId: string, hidden: boolean): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_set_macros_hidden', {
+          target_user_id: userId,
+          new_hidden_value: hidden,
         });
 
       if (error) throw error;

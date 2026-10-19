@@ -10,6 +10,7 @@ import { toast } from '@/lib/toast';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import type { UserSettings, RateLimitStatus } from '@/types';
+import { useMacrosHidden } from '@/utils/use-macros-hidden';
 
 // Sanity bounds; values outside these are almost certainly typos
 const LIMITS = {
@@ -21,6 +22,8 @@ const LIMITS = {
 type FieldKey = keyof typeof LIMITS;
 
 export default function SettingsScreen() {
+  // Coach has hidden numbers: targets are theirs to manage, nothing to show here
+  const macrosHidden = useMacrosHidden();
   const router = useRouter();
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [rateLimitStatus, setRateLimitStatus] = useState<RateLimitStatus | null>(null);
@@ -175,6 +178,15 @@ export default function SettingsScreen() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4">
         <div className="max-w-2xl mx-auto space-y-5">
+          {macrosHidden ? (
+            <div className="rounded-card border border-line bg-paper-raised px-4 py-5 text-center animate-fade-in">
+              <div className="text-sm font-semibold tracking-tight text-ink">Your coach is managing your targets</div>
+              <p className="mt-1 text-xs text-ink-muted leading-relaxed">
+                Just keep logging what you eat. Your coach sees the details.
+              </p>
+            </div>
+          ) : (
+          <>
           {/* Settings Form */}
           <div className="space-y-4">
             {fields.map(({ key, label, unit, hint }) => (
@@ -203,6 +215,8 @@ export default function SettingsScreen() {
               Cancel
             </Button>
           </div>
+          </>
+          )}
         </div>
       </div>
     </div>

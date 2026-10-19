@@ -1,10 +1,11 @@
 /**
  * DayTimeline - one day column of a user's food log, rendered as a
- * vertical timeline with per-entry timestamps and meal-gap markers.
- * Display-only: entries arrive pre-sorted; totals/colors are pure derivations.
+ * vertical timeline split into the same meal segments the client sees
+ * ("Meal 1, 2, 3"), with per-entry timestamps and gaps between meals.
+ * Display-only: totals/colors are pure derivations.
  */
 
-import React from 'react';
+import React, { useMemo } from 'react';
 import { format } from 'date-fns';
 import type { FoodEntry } from '@/types';
 import {
@@ -13,6 +14,7 @@ import {
   getCaloriesColor,
   getProteinColor,
 } from '@/components/admin/helpers';
+import { groupIntoMeals, formatMealTime } from '@/utils/meal-groups';
 
 interface DayTimelineProps {
   dayName: string;
@@ -40,6 +42,8 @@ export default function DayTimeline({
   const totalCal = entries.reduce((sum, e) => sum + e.calories, 0);
   const totalPro = entries.reduce((sum, e) => sum + e.protein, 0);
 
+  const meals = useMemo(() => groupIntoMeals(entries), [entries]);
+
   const calColor = getCaloriesColor(totalCal, targetCalories, maintenanceCalories);
   const proColor = getProteinColor(totalPro, targetProtein);
 
@@ -62,15 +66,16 @@ export default function DayTimeline({
         )}
       </div>
 
-      {/* Vertical timeline of entries */}
+      {/* Vertical timeline, one block per meal */}
       <div className="relative pl-5 max-h-48 overflow-y-auto">
         {entries.length > 0 && (
           <span className="absolute left-[3px] top-1 bottom-1 w-px bg-line" />
         )}
-        {entries.map((entry, entryIdx) => {
-          const gap = entryIdx > 0 ? formatLogGap(entries[entryIdx - 1].created_at, entry.created_at) : null;
+        {meals.map((meal, mealIdx) => {
+          // Gap is measured from the end of the previous sitting to this one
+          const gap = mealIdx > 0 ? formatLogGap(meals[mealIdx - 1].endedAt, meal.startedAt) : null;
           return (
-            <React.Fragment key={entry.id}>
+            <React.Fragment key={meal.id}>
               {gap && (
                 <div className="relative py-0.5">
                   <span className="relative z-10 -ml-5 bg-paper-raised px-1 text-[10px] text-ink-faint tabular-nums">
@@ -78,21 +83,37 @@ export default function DayTimeline({
                   </span>
                 </div>
               )}
-              <div className="relative py-1 animate-entry-in">
-                <span className="absolute -left-[17px] top-[7px] h-[7px] w-[7px] rounded-full border border-line-strong bg-paper-raised" />
+              <div className={`relative ${mealIdx > 0 ? 'pt-1.5' : ''} pb-0.5`}>
+                <span className="absolute -left-[18px] top-[5px] h-[9px] w-[9px] rounded-full bg-ink" />
                 <div className="flex items-baseline justify-between gap-2">
-                  {/* break-words, never truncate: the coach must see full item names */}
-                  <div className="text-xs font-medium text-ink min-w-0 flex-1 break-words">
-                    {viewMode === 'log' ? (entry.description || entry.name) : entry.name}
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-ink-muted min-w-0">
+                    Meal {meal.number}
+                    <span className="font-medium normal-case tracking-normal text-ink-faint tabular-nums">
+                      {' · '}{formatMealTime(meal, timezone)}
+                    </span>
                   </div>
-                  <div className="text-[10px] text-ink-faint tabular-nums shrink-0">
-                    {formatLogTime(entry.created_at, timezone)}
+                  <div className="text-[10px] font-semibold text-ink-soft tabular-nums shrink-0">
+                    {meal.calories}c · {meal.protein.toFixed(0)}p
                   </div>
-                </div>
-                <div className="text-[11px] text-ink-muted tabular-nums">
-                  {entry.calories}c · {entry.protein.toFixed(0)}p
                 </div>
               </div>
+              {meal.entries.map((entry) => (
+                <div key={entry.id} className="relative py-1 animate-entry-in">
+                  <span className="absolute -left-[17px] top-[7px] h-[7px] w-[7px] rounded-full border border-line-strong bg-paper-raised" />
+                  <div className="flex items-baseline justify-between gap-2">
+                    {/* break-words, never truncate: the coach must see full item names */}
+                    <div className="text-xs font-medium text-ink min-w-0 flex-1 break-words">
+                      {viewMode === 'log' ? (entry.description || entry.name) : entry.name}
+                    </div>
+                    <div className="text-[10px] text-ink-faint tabular-nums shrink-0">
+                      {formatLogTime(entry.created_at, timezone)}
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-ink-muted tabular-nums">
+                    {entry.calories}c · {Number(entry.protein).toFixed(0)}p
+                  </div>
+                </div>
+              ))}
             </React.Fragment>
           );
         })}

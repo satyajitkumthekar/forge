@@ -227,4 +227,5 @@ export const CACHE_KEYS = {
   meals: 'meals',
   cookbooks: 'cookbooks',
   reflection: 'active_reflection',
+  macrosHidden: 'macros_hidden',
 };

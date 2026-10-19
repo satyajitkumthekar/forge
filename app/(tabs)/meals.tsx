@@ -18,6 +18,7 @@ import EmptyState from '@/components/ui/EmptyState';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { FoodEntry, Meal, AnchorCookbook } from '@/types';
+import { useMacrosHidden } from '@/utils/use-macros-hidden';
 
 type BuilderState = null | { mode: 'new' } | { mode: 'edit'; meal: Meal };
 
@@ -29,6 +30,7 @@ const MealsGlyph = (
 
 export default function MealsScreen() {
   const { signOut } = useAuth();
+  const macrosHidden = useMacrosHidden();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [loading, setLoading] = useState(true);
   const [builder, setBuilder] = useState<BuilderState>(null);
@@ -405,7 +407,7 @@ export default function MealsScreen() {
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold tracking-tight text-ink break-words">{meal.name}</div>
                       <div className="text-xs text-ink-muted tabular-nums mt-0.5">
-                        {meal.items.length} items · {totalCalories} cal · {totalProtein}g pro
+                        {meal.items.length} items{!macrosHidden && ` · ${totalCalories} cal · ${totalProtein}g pro`}
                       </div>
                     </div>
                     <svg
@@ -424,9 +426,11 @@ export default function MealsScreen() {
                       {meal.items.map((item) => (
                         <div key={item.id} className="flex items-baseline justify-between gap-3 px-4 py-2.5">
                           <span className="font-medium text-ink text-sm min-w-0 flex-1 break-words">{item.name}</span>
-                          <span className="text-xs text-ink-muted tabular-nums whitespace-nowrap">
-                            {item.calories}c · {item.protein}p
-                          </span>
+                          {!macrosHidden && (
+                            <span className="text-xs text-ink-muted tabular-nums whitespace-nowrap">
+                              {item.calories}c · {item.protein}p
+                            </span>
+                          )}
                         </div>
                       ))}
                     </div>

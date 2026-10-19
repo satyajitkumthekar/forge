@@ -12,6 +12,8 @@ export interface FoodEntry {
   user_id: string;
   /** Set when the entry was logged via a saved meal (see Meal) */
   meal_id?: string | null;
+  /** The sitting this entry belongs to ("Meal 1, 2, 3"); see utils/meal-groups.ts */
+  meal_group_id?: string | null;
 }
 
 export interface MealItem {
@@ -255,6 +257,8 @@ export interface UserMetric {
   coach_reminder: string | null;
   timezone?: string | null;
   reflections_enabled: boolean;
+  /** Staff have hidden calorie & protein numbers from this client */
+  macros_hidden?: boolean;
   access_granted: boolean;
   signed_up_at: string | null;
   /** The coach this client is assigned to; null = the admin's own client */

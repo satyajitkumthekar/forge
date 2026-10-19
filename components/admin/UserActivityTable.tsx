@@ -28,12 +28,14 @@ interface UserActivityTableProps {
   updatingTier: string | null;
   updatingClient: string | null;
   updatingReflections: string | null;
+  updatingMacrosHidden: string | null;
   updatingAccess: string | null;
   updatingCoach: string | null;
   updatingMacros: string | null;
   onTierChange: (userId: string, newTier: 'basic' | 'pro' | 'admin' | 'coach') => void;
   onClientToggle: (userId: string, currentValue: boolean) => void;
   onReflectionsToggle: (userId: string, currentValue: boolean) => void;
+  onMacrosHiddenToggle: (userId: string, currentValue: boolean) => void;
   onAccessToggle: (userId: string, currentValue: boolean) => void;
   onCoachAssign: (userId: string, coachId: string | null) => void;
   onDeleteUser: (user: UserMetric) => void;
@@ -62,12 +64,14 @@ export default function UserActivityTable({
   updatingTier,
   updatingClient,
   updatingReflections,
+  updatingMacrosHidden,
   updatingAccess,
   updatingCoach,
   updatingMacros,
   onTierChange,
   onClientToggle,
   onReflectionsToggle,
+  onMacrosHiddenToggle,
   onAccessToggle,
   onCoachAssign,
   onDeleteUser,
@@ -123,6 +127,7 @@ export default function UserActivityTable({
                   {isAdminViewer && <th className={headerCellClass}>Tier</th>}
                   {isAdminViewer && <th className={headerCellClass}>Client</th>}
                   <th className={headerCellClass}>Practice</th>
+                  <th className={headerCellClass}>Cal &amp; Pro</th>
                   {isAdminViewer && <th className={headerCellClass}>Access</th>}
                   {isAdminViewer && <th className={headerCellClass}>Coach</th>}
                   <th className={headerCellClass}>Maintenance Cal</th>
@@ -196,6 +201,21 @@ export default function UserActivityTable({
                         } ${updatingReflections === user.user_id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
                       >
                         {updatingReflections === user.user_id ? '...' : user.reflections_enabled ? 'ON' : 'OFF'}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      {/* Hide calorie & protein numbers from the client's app; staff still see everything */}
+                      <button
+                        onClick={() => onMacrosHiddenToggle(user.user_id, user.macros_hidden === true)}
+                        disabled={updatingMacrosHidden === user.user_id}
+                        title={user.macros_hidden ? 'Hidden from client. Tap to reveal.' : 'Visible to client. Tap to hide.'}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                          user.macros_hidden
+                            ? 'bg-ink text-white border border-ink hover:bg-ink-soft'
+                            : 'bg-paper-inset text-ink-muted border border-line hover:bg-paper-deep'
+                        } ${updatingMacrosHidden === user.user_id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                      >
+                        {updatingMacrosHidden === user.user_id ? '...' : user.macros_hidden ? 'HIDDEN' : 'SHOWN'}
                       </button>
                     </td>
                     {isAdminViewer && (

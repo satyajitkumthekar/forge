@@ -10,6 +10,7 @@ import { api } from '@/lib/api';
 import { db, type FoodItemInput } from '@/lib/database';
 import { toast } from '@/lib/toast';
 import { useCountUp } from '@/utils/use-count-up';
+import { useMacrosHidden } from '@/utils/use-macros-hidden';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
@@ -40,6 +41,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProps) {
+  const macrosHidden = useMacrosHidden();
   const [name, setName] = useState(meal?.name ?? '');
   const [items, setItems] = useState<DraftItem[]>(() =>
     (meal?.items ?? []).map(({ name: itemName, calories, protein, description }) => ({
@@ -233,7 +235,7 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
           />
 
           {/* Running totals strip */}
-          {items.length >= 1 && (
+          {items.length >= 1 && !macrosHidden && (
             <div className="flex items-baseline gap-1.5 animate-fade-in">
               <span className="text-xs text-ink-muted">Total ·</span>
               <span className="text-lg font-semibold tracking-tight tabular-nums text-ink">{shownCalories}</span>
@@ -262,8 +264,12 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
                 <thead>
                   <tr className="border-b border-line bg-paper-inset/70">
                     <th className="text-left py-2.5 px-3 text-xs font-semibold text-ink-muted uppercase tracking-wider">Food</th>
-                    <th className="text-center py-2.5 px-2 text-xs font-semibold text-ink-muted uppercase tracking-wider whitespace-nowrap">Cal</th>
-                    <th className="text-center py-2.5 px-2 text-xs font-semibold text-ink-muted uppercase tracking-wider whitespace-nowrap">Pro</th>
+                    {!macrosHidden && (
+                      <>
+                        <th className="text-center py-2.5 px-2 text-xs font-semibold text-ink-muted uppercase tracking-wider whitespace-nowrap">Cal</th>
+                        <th className="text-center py-2.5 px-2 text-xs font-semibold text-ink-muted uppercase tracking-wider whitespace-nowrap">Pro</th>
+                      </>
+                    )}
                     <th className="w-14"></th>
                   </tr>
                 </thead>
@@ -273,12 +279,16 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
                       <td className="py-3 px-3">
                         <div className="font-medium text-ink text-sm">{item.name}</div>
                       </td>
-                      <td className="py-3 px-2 text-center">
-                        <div className="text-xs font-semibold text-ink tabular-nums">{item.calories}</div>
-                      </td>
-                      <td className="py-3 px-2 text-center">
-                        <div className="text-xs font-semibold text-ink tabular-nums">{item.protein}g</div>
-                      </td>
+                      {!macrosHidden && (
+                        <>
+                          <td className="py-3 px-2 text-center">
+                            <div className="text-xs font-semibold text-ink tabular-nums">{item.calories}</div>
+                          </td>
+                          <td className="py-3 px-2 text-center">
+                            <div className="text-xs font-semibold text-ink tabular-nums">{item.protein}g</div>
+                          </td>
+                        </>
+                      )}
                       <td className="py-1.5 px-2 text-right">
                         <div className="flex items-center justify-end">
                           <button

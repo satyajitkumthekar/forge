@@ -13,6 +13,7 @@
 import React, { useState } from 'react';
 import { format } from 'date-fns';
 import type { AnchorCookbook } from '@/types';
+import { useMacrosHidden } from '@/utils/use-macros-hidden';
 
 interface CookbookViewProps {
   cookbook: AnchorCookbook;
@@ -26,6 +27,9 @@ const microLabel = 'text-[11px] font-semibold uppercase tracking-wider text-ink-
 
 export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookViewProps) {
   const c = cookbook.content;
+  // The coach can hide numbers from a client; their own preview always shows them
+  const macrosHiddenForUser = useMacrosHidden();
+  const showMacros = mode === 'preview' || !macrosHiddenForUser;
   const [added, setAdded] = useState<Set<number>>(new Set());
   const [adding, setAdding] = useState<number | null>(null);
 
@@ -77,9 +81,11 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
                 className="flex items-baseline justify-between gap-4 py-2.5 border-b border-line"
               >
                 <span className="text-sm text-ink min-w-0 flex-1">{row.label}</span>
-                <span className="text-sm text-ink-soft tabular-nums shrink-0">
-                  ~{row.protein}g · {row.calories} kcal
-                </span>
+                {showMacros && (
+                  <span className="text-sm text-ink-soft tabular-nums shrink-0">
+                    ~{row.protein}g · {row.calories} kcal
+                  </span>
+                )}
               </div>
             ))}
           </div>
@@ -118,9 +124,11 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
                 {meal.ingredients.map((ing, j) => (
                   <li key={j} className="flex items-baseline justify-between gap-3 text-sm text-ink">
                     <span className="min-w-0 flex-1">· {ing.text}</span>
-                    <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
-                      {ing.calories} cal · {Number(ing.protein).toFixed(0)}g
-                    </span>
+                    {showMacros && (
+                      <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
+                        {ing.calories} cal · {Number(ing.protein).toFixed(0)}g
+                      </span>
+                    )}
                   </li>
                 ))}
               </ul>
@@ -153,9 +161,11 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
             </blockquote>
           ) : null}
 
-          <p className="mt-6 text-sm font-medium text-ink tabular-nums">
-            ~{meal.calories} kcal · ~{Number(meal.protein).toFixed(0)}g protein
-          </p>
+          {showMacros && (
+            <p className="mt-6 text-sm font-medium text-ink tabular-nums">
+              ~{meal.calories} kcal · ~{Number(meal.protein).toFixed(0)}g protein
+            </p>
+          )}
 
           {/* The one quiet action per recipe: instant preset insert, no computation */}
           {added.has(i) ? (
@@ -199,16 +209,20 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
           <div className="mt-3">
             <div className="flex items-baseline justify-between gap-4 pb-2 border-b border-line-strong">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Meal</span>
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted shrink-0">
-                kcal · protein
-              </span>
+              {showMacros && (
+                <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted shrink-0">
+                  kcal · protein
+                </span>
+              )}
             </div>
             {c.meals.map((meal, i) => (
               <div key={i} className="flex items-baseline justify-between gap-4 py-2.5 border-b border-line">
                 <span className="text-sm text-ink min-w-0 flex-1">{meal.name}</span>
-                <span className="text-sm text-ink-soft tabular-nums shrink-0">
-                  ~{meal.calories} · ~{Number(meal.protein).toFixed(0)}g
-                </span>
+                {showMacros && (
+                  <span className="text-sm text-ink-soft tabular-nums shrink-0">
+                    ~{meal.calories} · ~{Number(meal.protein).toFixed(0)}g
+                  </span>
+                )}
               </div>
             ))}
           </div>

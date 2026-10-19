@@ -7,9 +7,16 @@ import React, { useState } from 'react';
 import { api } from '@/lib/api';
 import { db } from '@/lib/database';
 import type { FoodEntry } from '@/types';
+import type { MealTarget } from '@/utils/meal-groups';
 
 interface ChatInputProps {
   onFoodLogged: (entry: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>) => void;
+  /** Where the next log lands; null hides the line (empty day = Meal 1) */
+  mealTarget?: MealTarget | null;
+  onNewMeal?: () => void;
+  onClearPin?: () => void;
+  /** Lets the log screen focus the field when a meal is picked */
+  inputRef?: React.RefObject<HTMLInputElement | null>;
 }
 
 // Convert file to base64
@@ -22,7 +29,7 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
-export default function ChatInput({ onFoodLogged }: ChatInputProps) {
+export default function ChatInput({ onFoodLogged, mealTarget, onNewMeal, onClearPin, inputRef }: ChatInputProps) {
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -145,6 +152,40 @@ export default function ChatInput({ onFoodLogged }: ChatInputProps) {
           </div>
         )}
 
+        {/* Meal target: where the next item goes, with one-tap overrides */}
+        {mealTarget && (
+          <div className="-mt-1 mb-1.5 min-h-[32px] flex items-center justify-between gap-2">
+            <span key={mealTarget.label} className="text-xs text-ink-muted tabular-nums truncate animate-fade-in">
+              {mealTarget.label}
+            </span>
+            {mealTarget.mode === 'auto' ? (
+              <button
+                type="button"
+                onClick={onNewMeal}
+                disabled={loading || mealTarget.isNew}
+                className={`flex-shrink-0 min-h-[32px] px-2.5 -mr-1 flex items-center gap-1 text-xs font-medium text-ink-soft hover:text-ink hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150 disabled:opacity-0 disabled:pointer-events-none`}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 5v14m-7-7h14" />
+                </svg>
+                New meal
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={onClearPin}
+                disabled={loading}
+                aria-label="Back to automatic meals"
+                className="flex-shrink-0 min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-ink-muted hover:text-ink hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150 animate-fade-in"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Input Bar */}
         <form onSubmit={handleSubmit} className="flex items-center gap-2">
           {/* Image Upload Button */}
@@ -167,7 +208,12 @@ export default function ChatInput({ onFoodLogged }: ChatInputProps) {
             type="text"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
-            placeholder="Add 1 or multiple items (e.g., 2 rotis, dal, rice)"
+            ref={inputRef}
+            placeholder={
+              mealTarget?.mode === 'pinned'
+                ? `Add to Meal ${mealTarget.number}…`
+                : 'Add 1 or multiple items (e.g., 2 rotis, dal, rice)'
+            }
             className="flex-1 min-w-0 px-3 py-2.5 border border-line-strong rounded-ctrl focus:outline-none focus:ring-1 focus:ring-ink-muted bg-paper-raised/70 backdrop-blur-sm text-base text-ink placeholder:text-ink-faint transition duration-150"
             disabled={loading}
           />

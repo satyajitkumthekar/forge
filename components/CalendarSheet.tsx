@@ -12,6 +12,7 @@ import { getDayStatus, type DayStatus } from '@/utils/day-status';
 import { parseYMD, appToday, maxNavigableDate } from '@/utils/date';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { UserSettings } from '@/types';
+import { useMacrosHidden } from '@/utils/use-macros-hidden';
 
 interface CalendarSheetProps {
   open: boolean;
@@ -33,6 +34,9 @@ const STATUS_CLASSES: Record<DayStatus, string> = {
   empty: 'bg-paper-inset text-ink-faint',
 };
 
+// Numbers hidden by the coach: a logged day carries no over/under signal
+const LOGGED_CLASS = 'bg-ink text-white font-semibold';
+
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 /** 'YYYY-MM' helpers — all local time, consistent with utils/date.ts */
@@ -51,6 +55,7 @@ const daysInMonth = (month: string): number => {
 
 export default function CalendarSheet({ open, onClose, settings, viewedDate, onSelectDate }: CalendarSheetProps) {
   const [month, setMonth] = useState(() => monthOf(viewedDate));
+  const macrosHidden = useMacrosHidden();
   // date -> total calories for the displayed month; null = not loaded yet
   const [totals, setTotals] = useState<Record<string, number> | null>(null);
 
@@ -200,7 +205,11 @@ export default function CalendarSheet({ open, onClose, settings, viewedDate, onS
                     className={`aspect-square rounded-md flex items-center justify-center text-[11px] tabular-nums transition duration-150 active:scale-[0.95] ${
                       isFuture
                         ? 'bg-transparent text-ink-faint/60 cursor-not-allowed active:scale-100'
-                        : STATUS_CLASSES[status]
+                        : macrosHidden
+                          ? (totals[dateStr] ?? 0) > 0
+                            ? LOGGED_CLASS
+                            : STATUS_CLASSES.empty
+                          : STATUS_CLASSES[status]
                     } ${
                       isToday
                         ? 'ring-2 ring-ink ring-offset-1 ring-offset-paper-raised'
@@ -218,28 +227,41 @@ export default function CalendarSheet({ open, onClose, settings, viewedDate, onS
           )}
 
           {/* Legend */}
-          <div className="px-4 pb-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-ink-muted">
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm bg-accent-500" />
-              On target
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm bg-warn" />
-              Close
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm bg-alert" />
-              Off
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="w-2.5 h-2.5 rounded-sm bg-danger" />
-              Over
-            </span>
-            <span className="flex items-center gap-1">
-              · <span className="w-2.5 h-2.5 rounded-sm bg-paper-inset border border-line" />
-              not logged
-            </span>
-          </div>
+          {macrosHidden ? (
+            <div className="px-4 pb-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-ink-muted">
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-sm bg-ink" />
+                Logged
+              </span>
+              <span className="flex items-center gap-1">
+                · <span className="w-2.5 h-2.5 rounded-sm bg-paper-inset border border-line" />
+                not logged
+              </span>
+            </div>
+          ) : (
+            <div className="px-4 pb-4 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[10px] text-ink-muted">
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-sm bg-accent-500" />
+                On target
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-sm bg-warn" />
+                Close
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-sm bg-alert" />
+                Off
+              </span>
+              <span className="flex items-center gap-1">
+                <span className="w-2.5 h-2.5 rounded-sm bg-danger" />
+                Over
+              </span>
+              <span className="flex items-center gap-1">
+                · <span className="w-2.5 h-2.5 rounded-sm bg-paper-inset border border-line" />
+                not logged
+              </span>
+            </div>
+          )}
         </div>
       </div>
     </div>

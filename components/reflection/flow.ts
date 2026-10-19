@@ -23,6 +23,7 @@ import type {
   ReflectionPath,
   ReflectionVerdict,
 } from '@/types';
+import { readMacrosHidden } from '@/utils/use-macros-hidden';
 
 export type StepKind = 'info' | 'choice' | 'text';
 
@@ -37,6 +38,8 @@ export interface ReflectionCtx {
   totalProtein: number;
   targetCalories: number;
   targetProtein: number;
+  /** Coach has hidden numbers from this client: prompts state direction only */
+  macrosHidden?: boolean;
 }
 
 /** Structured columns a choice step can write (mirrors ReflectionProgressPatch) */
@@ -99,6 +102,13 @@ const failOpener = (ctx: ReflectionCtx): string => {
       : `calories came in under (${fmt(ctx.totalCalories)} against a ${fmt(calorieLimit)} minimum)`;
   const proteinClause = `protein came in under (${fmtProtein(ctx.totalProtein)} against your ${ctx.targetProtein}g target)`;
 
+  if (ctx.macrosHidden) {
+    const hiddenCalories = ctx.goalType === 'cut' ? 'calories ran over' : 'calories came in under';
+    if (ctx.verdict === 'fail_both') return `Yesterday didn't land. The ${hiddenCalories}, and protein came in under.`;
+    if (ctx.verdict === 'fail_calories') return `Yesterday didn't land. The ${hiddenCalories}.`;
+    return "Yesterday didn't land. The protein came in under.";
+  }
+
   if (ctx.verdict === 'fail_both') {
     return `Yesterday didn't land. The ${calorieClause}, and ${proteinClause}.`;
   }
@@ -114,7 +124,9 @@ export const FLOW: Record<string, Step> = {
     id: 'precheck',
     kind: 'choice',
     prompt: (ctx) =>
-      `Before we look at yesterday: the log seems light (${fmt(ctx.totalCalories)} calories). Did you log everything you ate?`,
+      ctx.macrosHidden
+        ? 'Before we look at yesterday: the log seems light. Did you log everything you ate?'
+        : `Before we look at yesterday: the log seems light (${fmt(ctx.totalCalories)} calories). Did you log everything you ate?`,
     saveColumn: 'logging_complete',
     options: [
       { value: 'yes', label: "Yes, that's everything", next: VERDICT_ENTRY },
@@ -360,6 +372,7 @@ export function buildCtx(
     totalProtein: Number(row.total_protein),
     targetCalories: row.target_calories,
     targetProtein: row.target_protein,
+    macrosHidden: readMacrosHidden(),
   };
 }
 
