@@ -13,6 +13,7 @@ import { queueOperation, processQueue, checkOnlineStatus } from '@/utils/offline
 import { getFrequentItems } from '@/utils/frequent-items';
 import { groupIntoMeals, resolveTargetMeal, type MealPin } from '@/utils/meal-groups';
 import { useMacrosHidden, refreshMacrosHidden } from '@/utils/use-macros-hidden';
+import { useMealPhotosEnabled, refreshMealPhotosEnabled } from '@/utils/use-meal-photos-enabled';
 import ChatInput from '@/components/ChatInput';
 import MacroTable from '@/components/MacroTable';
 import Totals from '@/components/Totals';
@@ -30,9 +31,13 @@ import { appToday, todayLocal, addDaysYMD, maxNavigableDate, formatDisplayDate, 
 import { tokens } from '@/lib/design-tokens';
 import Card from '@/components/ui/Card';
 import { SkeletonRow, SkeletonDonut } from '@/components/ui/Skeleton';
-import type { FoodEntry, UserSettings, FrequentItem, Meal, AnchorCookbook } from '@/types';
+import type { FoodEntry, UserSettings, FrequentItem, Meal, MealPhoto, AnchorCookbook } from '@/types';
+import { compressImage } from '@/utils/image';
 
 // Note: CACHE_KEYS now imported from enhanced-cache for consistency
+
+// Meal photo signed URLs last an hour; cache them for less
+const MEAL_PHOTO_CACHE_TTL = 50 * 60 * 1000;
 
 /**
  * Split a day's macro totals into three realistic test entries whose sums
@@ -119,6 +124,13 @@ export default function TrackScreen() {
   // DB-backed (revealed_at), so it fires once ever, across devices.
   const [revealCookbook, setRevealCookbook] = useState<AnchorCookbook | null>(null);
   const [entries, setEntries] = useState<FoodEntry[]>([]);
+  // Items sent from the chat box that the AI is still analyzing. Shown as
+  // loading rows in their meal, kept out of entries so totals and the cache
+  // only ever hold saved food.
+  const [pendingEntries, setPendingEntries] = useState<FoodEntry[]>([]);
+  // The day's meal photos by meal id (display only, for the coach)
+  const [mealPhotos, setMealPhotos] = useState<Record<string, MealPhoto>>({});
+  const [uploadingPhotoIds, setUploadingPhotoIds] = useState<Set<string>>(new Set());
   const [settings, setSettings] = useState<UserSettings>({
     id: '',
     user_id: '',
@@ -182,6 +194,8 @@ export default function TrackScreen() {
   const [mealPin, setMealPin] = useState<MealPin>(null);
   // Coach can hide every calorie & protein number (and status colour)
   const macrosHidden = useMacrosHidden();
+  // Staff switch meal photos on per client; off hides the feature entirely
+  const photosEnabled = useMealPhotosEnabled();
   // Ticks each minute so the auto target rolls to "Starting Meal N" once
   // an hour passes without a log, even if nothing else re-renders
   const [clock, setClock] = useState(() => Date.now());
@@ -192,7 +206,23 @@ export default function TrackScreen() {
   useEffect(() => {
     setMealPin(null);
   }, [currentDate]);
-  const mealGroups = useMemo(() => groupIntoMeals(entries), [entries]);
+  // Analysis runs in the background, so its result lands in a closure from
+  // an older render: these refs give it the live list, date and loading rows
+  const entriesRef = React.useRef(entries);
+  entriesRef.current = entries;
+  const currentDateRef = React.useRef(currentDate);
+  currentDateRef.current = currentDate;
+  const pendingRef = React.useRef(pendingEntries);
+  pendingRef.current = pendingEntries;
+
+  const displayEntries = useMemo(
+    () => [...entries, ...pendingEntries.filter((p) => p.entry_date === currentDate)],
+    [entries, pendingEntries, currentDate]
+  );
+  const pendingIds = useMemo(() => new Set(pendingEntries.map((p) => p.id)), [pendingEntries]);
+  // Loading rows count toward meals, so a second item typed while the first
+  // is analyzing joins the same meal instead of starting another
+  const mealGroups = useMemo(() => groupIntoMeals(displayEntries), [displayEntries]);
   const mealTarget = useMemo(
     () => resolveTargetMeal(mealGroups, mealPin, clock),
     [mealGroups, mealPin, clock]
@@ -426,6 +456,7 @@ export default function TrackScreen() {
       const seq = ++loadSeqRef.current;
       // Re-check on every load/tab focus so a coach's change lands quickly
       refreshMacrosHidden();
+      refreshMealPhotosEnabled();
 
       try {
         setError('');
@@ -505,19 +536,62 @@ export default function TrackScreen() {
     };
   }, [currentDate, focusVersion]);
 
-  const handleFoodLogged = async (foodData: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>) => {
+  // Send in the chat box: stamp the meal and time now (what the user saw
+  // when they hit Send) and show a loading row until the numbers come back
+  const handleAnalyzeStart = (label: string) => {
+    const { mealGroupId, createdAt } = takeMealTarget();
+    const id = `pending_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
+    const pending: FoodEntry = {
+      id,
+      name: label,
+      calories: 0,
+      protein: 0,
+      entry_date: currentDate,
+      created_at: createdAt,
+      user_id: settings.user_id,
+      meal_group_id: mealGroupId,
+    };
+    pendingRef.current = [...pendingRef.current, pending];
+    setPendingEntries(pendingRef.current);
+    return id;
+  };
+
+  const removePending = (pendingId: string) => {
+    pendingRef.current = pendingRef.current.filter((p) => p.id !== pendingId);
+    setPendingEntries(pendingRef.current);
+  };
+
+  // Writes a day's entries to the cache, and to the screen when it's the day showing
+  const commitEntries = (date: string, next: FoodEntry[]) => {
+    setCached(CACHE_KEYS.entries(date), next);
+    if (date !== currentDateRef.current) return;
+    entriesRef.current = next;
+    setEntries(next);
+  };
+
+  const handleFoodLogged = async (
+    foodData: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>,
+    pendingId?: string
+  ) => {
     // Invalidate any in-flight background load; this mutation owns the final state
     loadSeqRef.current++;
 
-    // Captured before the optimistic update so a failed add rolls back to
-    // exactly what was showing (not a stale closure re-read after awaits)
-    const originalEntries = entries;
-
-    // Stamp the meal segment and log time up front: the optimistic row, the
-    // offline queue and the insert all agree on where this entry belongs
-    const { mealGroupId, createdAt } = takeMealTarget();
+    // From the chat box, the meal, time and day were fixed at Send; quick adds
+    // and duplicates resolve them now. Either way the optimistic row, the
+    // offline queue and the insert all agree on where this entry belongs.
+    const pending = pendingId ? pendingRef.current.find((p) => p.id === pendingId) : undefined;
+    if (pendingId) removePending(pendingId);
+    const date = pending?.entry_date ?? currentDate;
+    const { mealGroupId, createdAt } = pending
+      ? { mealGroupId: pending.meal_group_id ?? null, createdAt: pending.created_at }
+      : takeMealTarget();
     foodData = { ...foodData, meal_group_id: mealGroupId };
     const insertData = { ...foodData, created_at: createdAt };
+
+    // Other items may be saving at the same time, so every step reads the
+    // current list and swaps only this row (never restores a snapshot)
+    const listFor = () =>
+      date === currentDateRef.current ? entriesRef.current : getCached<FoodEntry[]>(CACHE_KEYS.entries(date)) ?? [];
 
     try {
       // Optimistic update with temp ID
@@ -525,17 +599,13 @@ export default function TrackScreen() {
       const newEntry: FoodEntry = {
         ...foodData,
         id: tempId,
-        entry_date: currentDate,
+        entry_date: date,
         created_at: createdAt,
         user_id: settings.user_id,
       };
 
       // Update UI immediately
-      const optimisticEntries = [...entries, newEntry];
-      setEntries(optimisticEntries);
-
-      const cacheKey = CACHE_KEYS.entries(currentDate);
-      setCached(cacheKey, optimisticEntries);
+      commitEntries(date, [...listFor(), newEntry]);
 
       // Check if online
       const isOnline = checkOnlineStatus();
@@ -543,7 +613,7 @@ export default function TrackScreen() {
       if (!isOnline) {
         await queueOperation({
           type: 'add_entry',
-          date: currentDate,
+          date,
           data: insertData,
         });
         setError('Offline: Entry saved and will sync when online.');
@@ -552,13 +622,19 @@ export default function TrackScreen() {
       }
 
       try {
-        // Make API call using abstraction
-        await db.food.add(currentDate, insertData);
-
-        // Reload fresh data and update cache
-        const updatedEntries = await db.food.getByDate(currentDate);
-        setEntries(updatedEntries);
-        setCached(cacheKey, updatedEntries);
+        // Make API call using abstraction; swap the temp row for the saved one
+        const saved = await db.food.add(date, insertData);
+        // A reload that landed mid-save may have dropped the temp row (or
+        // already picked up the saved one)
+        const list = listFor();
+        commitEntries(
+          date,
+          list.some((entry) => entry.id === tempId)
+            ? list.map((entry) => (entry.id === tempId ? saved : entry))
+            : list.some((entry) => entry.id === saved.id)
+              ? list
+              : [...list, saved]
+        );
         setDataVersion((prev) => prev + 1);
 
       } catch (err) {
@@ -567,19 +643,90 @@ export default function TrackScreen() {
         if (!checkOnlineStatus()) {
           await queueOperation({
             type: 'add_entry',
-            date: currentDate,
+            date,
             data: insertData,
           });
           setError('Connection lost: Entry saved and will sync when online.');
         } else {
           setError('Failed to add entry. Please try again.');
-          setEntries(originalEntries);
-          setCached(cacheKey, originalEntries);
+          commitEntries(date, listFor().filter((entry) => entry.id !== tempId));
         }
       }
     } catch (err) {
       // Catch any unexpected errors
       console.error('Unexpected error in handleFoodLogged:', err);
+    }
+  };
+
+  // Meal photos load alongside the day. Cached under the signed URLs' 1-hour
+  // life so thumbnails show instantly on return without going stale.
+  useEffect(() => {
+    if (!photosEnabled) {
+      setMealPhotos({});
+      return;
+    }
+    let cancelled = false;
+    const cacheKey = CACHE_KEYS.mealPhotos(currentDate);
+    const toMap = (list: MealPhoto[]) => Object.fromEntries(list.map((photo) => [photo.meal_group_id, photo]));
+    setMealPhotos(toMap(getCached<MealPhoto[]>(cacheKey) ?? []));
+
+    db.mealPhotos
+      .listForDate(currentDate)
+      .then((list) => {
+        setCached(cacheKey, list, MEAL_PHOTO_CACHE_TTL);
+        if (!cancelled) setMealPhotos(toMap(list));
+      })
+      .catch((err) => console.error('Error loading meal photos:', err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentDate, focusVersion, photosEnabled]);
+
+  const setUploadingPhoto = (mealGroupId: string, uploading: boolean) =>
+    setUploadingPhotoIds((prev) => {
+      const next = new Set(prev);
+      if (uploading) next.add(mealGroupId);
+      else next.delete(mealGroupId);
+      return next;
+    });
+
+  const handleAddPhoto = async (mealGroupId: string, file: File) => {
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please pick a photo.');
+      return;
+    }
+    const date = currentDate;
+    setUploadingPhoto(mealGroupId, true);
+    try {
+      const photo = await db.mealPhotos.upload(mealGroupId, date, await compressImage(file));
+      invalidate(CACHE_KEYS.mealPhotos(date));
+      if (date === currentDateRef.current) {
+        setMealPhotos((prev) => ({ ...prev, [mealGroupId]: photo }));
+      }
+      toast.success('Photo added. Your coach can see it for 7 days.');
+    } catch (err) {
+      console.error('Error adding meal photo:', err);
+      toast.error('Could not add the photo. Please try again.');
+    } finally {
+      setUploadingPhoto(mealGroupId, false);
+    }
+  };
+
+  const handleRemovePhoto = async (mealGroupId: string) => {
+    const photo = mealPhotos[mealGroupId];
+    if (!photo) return;
+    // Optimistic: gone right away, back if the delete fails
+    setMealPhotos(({ [mealGroupId]: _removed, ...rest }) => rest);
+    try {
+      await db.mealPhotos.remove(photo);
+      invalidate(CACHE_KEYS.mealPhotos(photo.entry_date));
+    } catch (err) {
+      console.error('Error removing meal photo:', err);
+      toast.error('Could not remove the photo. Please try again.');
+      if (photo.entry_date === currentDateRef.current) {
+        setMealPhotos((prev) => ({ ...prev, [mealGroupId]: photo }));
+      }
     }
   };
 
@@ -1028,11 +1175,16 @@ export default function TrackScreen() {
           ) : (
             <MacroTable
               entries={entries}
+              pendingIds={pendingIds}
               meals={mealGroups}
               targetGroupId={mealTarget.isNew ? null : mealTarget.groupId}
               pinned={mealTarget.mode === 'pinned'}
               onPickMeal={handlePickMeal}
               hideMacros={macrosHidden}
+              photos={mealPhotos}
+              uploadingPhotoIds={uploadingPhotoIds}
+              onAddPhoto={photosEnabled ? handleAddPhoto : undefined}
+              onRemovePhoto={handleRemovePhoto}
               onDeleteEntry={handleDeleteEntry}
               onDuplicateEntry={handleDuplicateEntry}
               onSaveAsMeal={handleSaveAsMeal}
@@ -1047,8 +1199,10 @@ export default function TrackScreen() {
       {/* Chat Input (in-flow footer above the tab bar) */}
       <ChatInput
         onFoodLogged={handleFoodLogged}
+        onAnalyzeStart={handleAnalyzeStart}
+        onAnalyzeFailed={removePending}
         inputRef={chatInputRef}
-        mealTarget={!loading && entries.length > 0 ? mealTarget : null}
+        mealTarget={!loading && displayEntries.length > 0 ? mealTarget : null}
         onNewMeal={() => setMealPin('new')}
         onClearPin={() => setMealPin(null)}
       />

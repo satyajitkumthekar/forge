@@ -29,6 +29,7 @@ interface UserActivityTableProps {
   updatingClient: string | null;
   updatingReflections: string | null;
   updatingMacrosHidden: string | null;
+  updatingMealPhotos: string | null;
   updatingAccess: string | null;
   updatingCoach: string | null;
   updatingMacros: string | null;
@@ -36,6 +37,7 @@ interface UserActivityTableProps {
   onClientToggle: (userId: string, currentValue: boolean) => void;
   onReflectionsToggle: (userId: string, currentValue: boolean) => void;
   onMacrosHiddenToggle: (userId: string, currentValue: boolean) => void;
+  onMealPhotosToggle: (userId: string, currentValue: boolean) => void;
   onAccessToggle: (userId: string, currentValue: boolean) => void;
   onCoachAssign: (userId: string, coachId: string | null) => void;
   onDeleteUser: (user: UserMetric) => void;
@@ -65,6 +67,7 @@ export default function UserActivityTable({
   updatingClient,
   updatingReflections,
   updatingMacrosHidden,
+  updatingMealPhotos,
   updatingAccess,
   updatingCoach,
   updatingMacros,
@@ -72,6 +75,7 @@ export default function UserActivityTable({
   onClientToggle,
   onReflectionsToggle,
   onMacrosHiddenToggle,
+  onMealPhotosToggle,
   onAccessToggle,
   onCoachAssign,
   onDeleteUser,
@@ -128,6 +132,7 @@ export default function UserActivityTable({
                   {isAdminViewer && <th className={headerCellClass}>Client</th>}
                   <th className={headerCellClass}>Practice</th>
                   <th className={headerCellClass}>Cal &amp; Pro</th>
+                  <th className={headerCellClass}>Photos</th>
                   {isAdminViewer && <th className={headerCellClass}>Access</th>}
                   {isAdminViewer && <th className={headerCellClass}>Coach</th>}
                   <th className={headerCellClass}>Maintenance Cal</th>
@@ -216,6 +221,21 @@ export default function UserActivityTable({
                         } ${updatingMacrosHidden === user.user_id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
                       >
                         {updatingMacrosHidden === user.user_id ? '...' : user.macros_hidden ? 'HIDDEN' : 'SHOWN'}
+                      </button>
+                    </td>
+                    <td className="px-4 py-3">
+                      {/* Meal photos: ON lets this client add a photo to each meal for staff to see */}
+                      <button
+                        onClick={() => onMealPhotosToggle(user.user_id, user.meal_photos_enabled === true)}
+                        disabled={updatingMealPhotos === user.user_id}
+                        title={user.meal_photos_enabled ? 'Client can add meal photos. Tap to turn off.' : 'Meal photos off. Tap to turn on.'}
+                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
+                          user.meal_photos_enabled
+                            ? 'bg-accent-100 text-accent-700 border border-accent-100 hover:bg-accent-100'
+                            : 'bg-paper-inset text-ink-muted border border-line hover:bg-paper-deep'
+                        } ${updatingMealPhotos === user.user_id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+                      >
+                        {updatingMealPhotos === user.user_id ? '...' : user.meal_photos_enabled ? 'ON' : 'OFF'}
                       </button>
                     </td>
                     {isAdminViewer && (

@@ -16,6 +16,18 @@ export interface FoodEntry {
   meal_group_id?: string | null;
 }
 
+/** One picture per meal segment, kept 7 days, for the coach to see
+ *  (display only; see supabase/migrations/20261020_meal_photos.sql) */
+export interface MealPhoto {
+  meal_group_id: string;
+  user_id: string;
+  entry_date: string;
+  path: string;
+  created_at: string;
+  /** Short-lived signed URL, filled in by the db layer */
+  url: string;
+}
+
 export interface MealItem {
   id: string;
   meal_id: string;
@@ -259,6 +271,8 @@ export interface UserMetric {
   reflections_enabled: boolean;
   /** Staff have hidden calorie & protein numbers from this client */
   macros_hidden?: boolean;
+  /** Staff have switched on meal photos for this client */
+  meal_photos_enabled?: boolean;
   access_granted: boolean;
   signed_up_at: string | null;
   /** The coach this client is assigned to; null = the admin's own client */

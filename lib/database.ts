@@ -15,6 +15,7 @@ import type {
   UserMetric,
   CoachAnalyticsRow,
   Meal,
+  MealPhoto,
   AnchorCookbook,
   AnchorCookbookContent,
   DailyReflection,
@@ -56,6 +57,29 @@ import { appToday, formatYMD } from '../utils/date';
 // shifted the day for users west of Greenwich.
 const getAppDate = appToday;
 const formatDateToString = formatYMD;
+
+const MEAL_PHOTO_BUCKET = 'meal-photos';
+/** Photos are purged after this many days; anything older is never shown */
+export const MEAL_PHOTO_KEEP_DAYS = 7;
+const MEAL_PHOTO_URL_SECONDS = 60 * 60;
+
+const isFreshPhoto = (row: { created_at: string }) =>
+  Date.now() - new Date(row.created_at).getTime() < MEAL_PHOTO_KEEP_DAYS * 24 * 60 * 60 * 1000;
+
+/** Signs every photo in one call; rows whose file is gone are dropped */
+async function withSignedUrls(rows: Omit<MealPhoto, 'url'>[]): Promise<MealPhoto[]> {
+  const fresh = rows.filter(isFreshPhoto);
+  if (fresh.length === 0) return [];
+  const { data, error } = await supabase.storage
+    .from(MEAL_PHOTO_BUCKET)
+    .createSignedUrls(fresh.map((row) => row.path), MEAL_PHOTO_URL_SECONDS);
+  if (error) throw error;
+  const urls = new Map((data || []).filter((d) => d.signedUrl).map((d) => [d.path, d.signedUrl]));
+  return fresh.flatMap((row) => {
+    const url = urls.get(row.path);
+    return url ? [{ ...row, url }] : [];
+  });
+}
 
 export const db = {
   // ============================================
@@ -161,6 +185,69 @@ export const db = {
         .delete()
         .eq('id', id);
 
+      if (error) throw error;
+    },
+  },
+
+  // ============================================
+  // MEAL PHOTOS (one picture per meal segment, kept 7 days)
+  // ============================================
+  mealPhotos: {
+    /**
+     * The day's meal photos with signed URLs
+     */
+    listForDate: async (date: string): Promise<MealPhoto[]> => {
+      const { data, error } = await supabase
+        .from('meal_photos')
+        .select('*')
+        .eq('entry_date', date);
+
+      if (error) throw error;
+      return withSignedUrls(data || []);
+    },
+
+    /**
+     * Add or replace a meal's photo. Replacing restarts its 7 days.
+     */
+    upload: async (mealGroupId: string, date: string, photo: Blob): Promise<MealPhoto> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const path = `${user.id}/${mealGroupId}.jpg`;
+      const { error: uploadError } = await supabase.storage
+        .from(MEAL_PHOTO_BUCKET)
+        .upload(path, photo, { contentType: 'image/jpeg', upsert: true });
+      if (uploadError) throw uploadError;
+
+      const { data, error } = await supabase
+        .from('meal_photos')
+        .upsert({
+          meal_group_id: mealGroupId,
+          user_id: user.id,
+          entry_date: date,
+          path,
+          created_at: new Date().toISOString(),
+        })
+        .select()
+        .single();
+      if (error) throw error;
+
+      const [signed] = await withSignedUrls([data]);
+      if (!signed) throw new Error('Photo uploaded but could not be loaded');
+      return signed;
+    },
+
+    /**
+     * Remove a meal's photo (file and row)
+     */
+    remove: async (photo: Pick<MealPhoto, 'meal_group_id' | 'path'>): Promise<void> => {
+      const { error: removeError } = await supabase.storage.from(MEAL_PHOTO_BUCKET).remove([photo.path]);
+      if (removeError) throw removeError;
+
+      const { error } = await supabase
+        .from('meal_photos')
+        .delete()
+        .eq('meal_group_id', photo.meal_group_id);
       if (error) throw error;
     },
   },
@@ -758,6 +845,23 @@ export const db = {
       if (error) throw error;
       return data?.macros_hidden === true;
     },
+
+    /**
+     * Whether staff have switched on meal photos for the signed-in client
+     */
+    getMealPhotosEnabled: async (): Promise<boolean> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data, error } = await supabase
+        .from('user_profiles')
+        .select('meal_photos_enabled')
+        .eq('user_id', user.id)
+        .single();
+
+      if (error) throw error;
+      return data?.meal_photos_enabled === true;
+    },
   },
 
   // ============================================
@@ -838,6 +942,20 @@ export const db = {
 
       if (error) throw error;
       return data || [];
+    },
+
+    /**
+     * A client's meal photos for a date range (staff only), with signed URLs
+     */
+    getUserMealPhotos: async (userId: string, startDate: string, endDate: string): Promise<MealPhoto[]> => {
+      const { data, error } = await supabase.rpc('admin_get_meal_photos', {
+        target_user_id: userId,
+        start_date: startDate,
+        end_date: endDate,
+      });
+
+      if (error) throw error;
+      return withSignedUrls(data || []);
     },
 
     /**
@@ -979,6 +1097,19 @@ export const db = {
         .rpc('admin_set_macros_hidden', {
           target_user_id: userId,
           new_hidden_value: hidden,
+        });
+
+      if (error) throw error;
+    },
+
+    /**
+     * Switch meal photos on or off for a client (staff only)
+     */
+    setMealPhotosEnabled: async (userId: string, enabled: boolean): Promise<void> => {
+      const { error } = await supabase
+        .rpc('admin_set_meal_photos_enabled', {
+          target_user_id: userId,
+          new_enabled_value: enabled,
         });
 
       if (error) throw error;

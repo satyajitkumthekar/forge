@@ -29,7 +29,7 @@ import UserChips from '@/components/admin/UserChips';
 import CoachTable from '@/components/admin/CoachTable';
 import CookbookPanel from '@/components/admin/CookbookPanel';
 import ReflectionsPanel from '@/components/admin/ReflectionsPanel';
-import type { AnalyticsSummary, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, WeekReflectionMarker, AccessPass } from '@/types';
+import type { AnalyticsSummary, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, MealPhoto, WeekReflectionMarker, AccessPass } from '@/types';
 
 // Cache TTL: 5 minutes (analytics don't need to be real-time)
 const ANALYTICS_CACHE_TTL = 5 * 60 * 1000;
@@ -48,6 +48,7 @@ export default function AnalyticsScreen() {
   const [updatingClient, setUpdatingClient] = useState<string | null>(null);
   const [updatingReflections, setUpdatingReflections] = useState<string | null>(null);
   const [updatingMacrosHidden, setUpdatingMacrosHidden] = useState<string | null>(null);
+  const [updatingMealPhotos, setUpdatingMealPhotos] = useState<string | null>(null);
   const [updatingMacros, setUpdatingMacros] = useState<string | null>(null);
   const [updatingReminder, setUpdatingReminder] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
@@ -75,6 +76,8 @@ export default function AnalyticsScreen() {
   // Expandable rows state
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [expandedRowsData, setExpandedRowsData] = useState<Map<string, Record<string, FoodEntry[]>>>(new Map());
+  // Meal photos per client for the shown week, keyed by meal id
+  const [mealPhotosData, setMealPhotosData] = useState<Map<string, Record<string, MealPhoto>>>(new Map());
   const [expandedRowViewMode, setExpandedRowViewMode] = useState<Map<string, 'table' | 'log' | 'coaching'>>(new Map());
   const [loadingExpanded, setLoadingExpanded] = useState<Set<string>>(new Set());
   const [coachingAnalysisData, setCoachingAnalysisData] = useState<Map<string, MealCoachingAnalysis>>(new Map());
@@ -372,6 +375,21 @@ export default function AnalyticsScreen() {
     }
   };
 
+  const handleMealPhotosToggle = async (userId: string, currentValue: boolean) => {
+    setUpdatingMealPhotos(userId);
+    try {
+      await db.analytics.setMealPhotosEnabled(userId, !currentValue);
+
+      // Reload analytics and update cache
+      await loadAnalytics(true); // Force refresh to clear cache
+    } catch (err) {
+      console.error('Error toggling meal photos:', err);
+      toast.error('Could not update. Please try again.');
+    } finally {
+      setUpdatingMealPhotos(null);
+    }
+  };
+
   const handleReflectionsToggle = async (userId: string, currentValue: boolean) => {
     setUpdatingReflections(userId);
     try {
@@ -513,12 +531,14 @@ export default function AnalyticsScreen() {
 
     // Clear expanded rows cache when changing weeks
     setExpandedRowsData(new Map());
+    setMealPhotosData(new Map());
     setWeekStart(newWeekStart);
   };
 
   const goToCurrentWeek = () => {
     // Clear expanded rows cache when changing weeks
     setExpandedRowsData(new Map());
+    setMealPhotosData(new Map());
     setWeekStart(getWeekStart(getTodayDate()));
   };
 
@@ -554,8 +574,18 @@ export default function AnalyticsScreen() {
       const endDate = format(weekEnd, 'yyyy-MM-dd');
 
 
-      // Use admin function to fetch entries for any user
-      const userEntries = await db.analytics.getUserFoodEntries(userId, startDate, endDate);
+      // Use admin function to fetch entries for any user. Photos load
+      // alongside; a photo hiccup never blocks the food log.
+      const [userEntries, userPhotos] = await Promise.all([
+        db.analytics.getUserFoodEntries(userId, startDate, endDate),
+        db.analytics.getUserMealPhotos(userId, startDate, endDate).catch((err) => {
+          console.error('[Analytics] Error loading meal photos:', err);
+          return [];
+        }),
+      ]);
+      setMealPhotosData(prev =>
+        new Map(prev).set(userId, Object.fromEntries(userPhotos.map(photo => [photo.meal_group_id, photo])))
+      );
       const groupedByDate: Record<string, FoodEntry[]> = {};
 
       // Initialize all 7 days with empty arrays
@@ -980,6 +1010,7 @@ export default function AnalyticsScreen() {
                 updatingClient={updatingClient}
                 updatingReflections={updatingReflections}
                 updatingMacrosHidden={updatingMacrosHidden}
+                updatingMealPhotos={updatingMealPhotos}
                 updatingAccess={updatingAccess}
                 updatingCoach={updatingCoach}
                 updatingMacros={updatingMacros}
@@ -987,6 +1018,7 @@ export default function AnalyticsScreen() {
                 onClientToggle={handleClientToggle}
                 onReflectionsToggle={handleReflectionsToggle}
                 onMacrosHiddenToggle={handleMacrosHiddenToggle}
+                onMealPhotosToggle={handleMealPhotosToggle}
                 onAccessToggle={handleAccessToggle}
                 onCoachAssign={handleCoachAssign}
                 onDeleteUser={(user) => setDeleteTarget(user)}
@@ -1045,6 +1077,7 @@ export default function AnalyticsScreen() {
               expandedRows={expandedRows}
               loadingExpanded={loadingExpanded}
               expandedRowsData={expandedRowsData}
+              mealPhotosData={mealPhotosData}
               expandedRowViewMode={expandedRowViewMode}
               coachingAnalysisData={coachingAnalysisData}
               loadingCoaching={loadingCoaching}
@@ -1085,6 +1118,7 @@ export default function AnalyticsScreen() {
               updatingClient={updatingClient}
               updatingReflections={updatingReflections}
               updatingMacrosHidden={updatingMacrosHidden}
+              updatingMealPhotos={updatingMealPhotos}
               updatingAccess={updatingAccess}
               updatingCoach={updatingCoach}
               updatingMacros={updatingMacros}
@@ -1092,6 +1126,7 @@ export default function AnalyticsScreen() {
               onClientToggle={handleClientToggle}
               onReflectionsToggle={handleReflectionsToggle}
               onMacrosHiddenToggle={handleMacrosHiddenToggle}
+              onMealPhotosToggle={handleMealPhotosToggle}
               onAccessToggle={handleAccessToggle}
               onCoachAssign={handleCoachAssign}
               onDeleteUser={(user) => setDeleteTarget(user)}

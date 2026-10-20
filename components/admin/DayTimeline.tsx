@@ -5,9 +5,10 @@
  * Display-only: totals/colors are pure derivations.
  */
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import type { FoodEntry } from '@/types';
+import type { FoodEntry, MealPhoto } from '@/types';
+import MealPhotoViewer from '@/components/MealPhotoViewer';
 import {
   formatLogTime,
   formatLogGap,
@@ -26,6 +27,8 @@ interface DayTimelineProps {
   maintenanceCalories: number;
   /** Client's IANA timezone — log times render in THEIR clock */
   timezone?: string | null;
+  /** Client's meal photos by meal id (kept 7 days) */
+  photos?: Record<string, MealPhoto>;
 }
 
 export default function DayTimeline({
@@ -37,7 +40,9 @@ export default function DayTimeline({
   targetProtein,
   maintenanceCalories,
   timezone,
+  photos,
 }: DayTimelineProps) {
+  const [viewing, setViewing] = useState<{ photo: MealPhoto; number: number } | null>(null);
   // Calculate totals for this day
   const totalCal = entries.reduce((sum, e) => sum + e.calories, 0);
   const totalPro = entries.reduce((sum, e) => sum + e.protein, 0);
@@ -96,6 +101,19 @@ export default function DayTimeline({
                     {meal.calories}c · {meal.protein.toFixed(0)}p
                   </div>
                 </div>
+                {photos?.[meal.id] && (
+                  <button
+                    onClick={() => setViewing({ photo: photos[meal.id], number: meal.number })}
+                    className="mt-1 block rounded-ctrl outline-none focus-visible:ring-1 focus-visible:ring-ink-muted animate-fade-in"
+                    aria-label={`View photo of Meal ${meal.number}`}
+                  >
+                    <img
+                      src={photos[meal.id].url}
+                      alt=""
+                      className="w-12 h-12 rounded-ctrl object-cover border border-line hover:opacity-90 transition-opacity duration-150"
+                    />
+                  </button>
+                )}
               </div>
               {meal.entries.map((entry) => (
                 <div key={entry.id} className="relative py-1 animate-entry-in">
@@ -118,6 +136,12 @@ export default function DayTimeline({
           );
         })}
       </div>
+
+      <MealPhotoViewer
+        photo={viewing?.photo ?? null}
+        title={viewing ? `Meal ${viewing.number}, ${dayName} ${format(date, 'M/d')}` : ''}
+        onClose={() => setViewing(null)}
+      />
     </div>
   );
 }

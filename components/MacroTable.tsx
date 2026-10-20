@@ -7,19 +7,23 @@
  * Optional selection mode lets the user save entries as a reusable meal.
  */
 
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import Button from '@/components/ui/Button';
+import { Skeleton } from '@/components/ui/Skeleton';
 import NameMealDialog from '@/components/meals/NameMealDialog';
+import MealPhotoViewer from '@/components/MealPhotoViewer';
 import type { FoodItemInput } from '@/lib/database';
-import type { FoodEntry } from '@/types';
+import type { FoodEntry, MealPhoto } from '@/types';
 import { formatMealTime, type MealGroup } from '@/utils/meal-groups';
 import { useCountUp } from '@/utils/use-count-up';
 
 interface MacroTableProps {
   entries: FoodEntry[];
+  /** Rows in `meals` the AI is still analyzing: shown loading, not selectable */
+  pendingIds?: Set<string>;
   onDeleteEntry: (entryId: string) => void;
   onDuplicateEntry: (entryId: string) => void;
   /** When provided (with ≥2 entries), enables "Select → Save as meal" */
@@ -33,6 +37,12 @@ interface MacroTableProps {
   onPickMeal: (groupId: string) => void;
   /** Coach has hidden calorie & protein numbers: drop the Cal/Pro columns */
   hideMacros?: boolean;
+  /** One photo per meal, keyed by meal id. Omit onAddPhoto to hide photos. */
+  photos?: Record<string, MealPhoto>;
+  /** Meals whose photo is uploading right now */
+  uploadingPhotoIds?: Set<string>;
+  onAddPhoto?: (mealGroupId: string, file: File) => void;
+  onRemovePhoto?: (mealGroupId: string) => void;
 }
 
 interface MealHeaderProps {
@@ -119,8 +129,12 @@ function MealHeader({ meal, isAutoTarget, isPinned, selecting, onClick, hideMacr
   );
 }
 
+const NO_PENDING = new Set<string>();
+const NO_PHOTOS: Record<string, MealPhoto> = {};
+
 export default function MacroTable({
   entries,
+  pendingIds = NO_PENDING,
   onDeleteEntry,
   onDuplicateEntry,
   onSaveAsMeal,
@@ -129,11 +143,78 @@ export default function MacroTable({
   pinned,
   onPickMeal,
   hideMacros = false,
+  photos = NO_PHOTOS,
+  uploadingPhotoIds = NO_PENDING,
+  onAddPhoto,
+  onRemovePhoto,
 }: MacroTableProps) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  // Meal photos: one hidden picker shared by every meal, and the open viewer
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const photoTargetRef = useRef<string | null>(null);
+  const [viewerMeal, setViewerMeal] = useState<MealGroup | null>(null);
+
+  const pickPhoto = (mealGroupId: string) => {
+    photoTargetRef.current = mealGroupId;
+    photoInputRef.current?.click();
+  };
+
+  // Display only, for the coach: a labelled row at the foot of each meal,
+  // which becomes the thumbnail once a photo is added
+  const renderPhotoRow = (meal: MealGroup) => {
+    // Older untagged history has no stable meal id; a meal of only loading
+    // rows isn't saved yet
+    if (!onAddPhoto || selecting || meal.id.startsWith('untagged_')) return null;
+    if (!meal.entries.some((entry) => !pendingIds.has(entry.id))) return null;
+
+    const photo = photos[meal.id];
+    const rowClass =
+      'w-full flex items-center gap-3 px-4 min-h-[52px] border-t border-line/60 text-left transition-colors duration-150';
+
+    if (uploadingPhotoIds.has(meal.id)) {
+      return (
+        <div className={rowClass} aria-busy="true">
+          <Skeleton className="w-10 h-10 rounded-ctrl flex-shrink-0" />
+          <span className="text-xs font-medium text-ink-muted">Adding photo…</span>
+        </div>
+      );
+    }
+
+    if (photo) {
+      return (
+        <button
+          onClick={() => setViewerMeal(meal)}
+          className={`${rowClass} py-2 hover:bg-paper-inset/60 active:bg-paper-inset animate-fade-in`}
+          aria-label={`View photo of Meal ${meal.number}`}
+        >
+          <img src={photo.url} alt="" className="w-10 h-10 rounded-ctrl object-cover flex-shrink-0 border border-line" />
+          <span className="flex-1 min-w-0">
+            <span className="block text-xs font-semibold text-ink">Meal photo</span>
+            <span className="block text-xs text-ink-muted">Your coach can see this</span>
+          </span>
+          <svg className="w-4 h-4 text-ink-faint flex-shrink-0 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </button>
+      );
+    }
+
+    return (
+      <button
+        onClick={() => pickPhoto(meal.id)}
+        className={`${rowClass} text-ink-soft hover:text-ink hover:bg-paper-inset/60 active:bg-paper-inset`}
+      >
+        <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+        </svg>
+        <span className="text-xs font-semibold">Add a photo of this meal</span>
+      </button>
+    );
+  };
 
   const handleDuplicate = (entryId: string) => {
     onDuplicateEntry(entryId);
@@ -168,8 +249,9 @@ export default function MacroTable({
   const toggleMealSelected = (meal: MealGroup) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
-      const allSelected = meal.entries.every((entry) => next.has(entry.id));
-      meal.entries.forEach((entry) => (allSelected ? next.delete(entry.id) : next.add(entry.id)));
+      const saved = meal.entries.filter((entry) => !pendingIds.has(entry.id));
+      const allSelected = saved.every((entry) => next.has(entry.id));
+      saved.forEach((entry) => (allSelected ? next.delete(entry.id) : next.add(entry.id)));
       return next;
     });
   };
@@ -190,7 +272,36 @@ export default function MacroTable({
     onSaveAsMeal?.(name, items);
   };
 
+  // Sent from the chat box, numbers still on the way: the typed text with a
+  // spinner, and shimmer where calories and protein will land
+  const renderPendingRow = (entry: FoodEntry) => (
+    <li
+      key={entry.id}
+      aria-busy="true"
+      className="flex items-center gap-3 pl-4 pr-1 min-h-[52px] animate-entry-in"
+    >
+      <div className="flex-1 min-w-0 py-3 flex items-center gap-2">
+        <svg className="animate-spin h-3.5 w-3.5 flex-shrink-0 text-ink-faint" viewBox="0 0 24 24" aria-hidden="true">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+        </svg>
+        <span className="text-sm text-ink-muted leading-snug break-words min-w-0">{entry.name}</span>
+      </div>
+
+      {!hideMacros && (
+        <div className="flex items-center gap-2 shrink-0" aria-hidden="true">
+          <Skeleton className="h-3.5 w-8 ml-2" />
+          <Skeleton className="h-3.5 w-8 ml-2" />
+        </div>
+      )}
+
+      {/* Same width as the duplicate/delete pair so columns stay aligned */}
+      <div className="w-20 shrink-0" aria-hidden="true" />
+    </li>
+  );
+
   const renderEntryRow = (entry: FoodEntry) => {
+    if (pendingIds.has(entry.id)) return renderPendingRow(entry);
     const isSelected = selectedIds.has(entry.id);
     return (
       <li
@@ -262,7 +373,7 @@ export default function MacroTable({
 
   return (
     <div>
-      {entries.length === 0 ? (
+      {meals.length === 0 ? (
         <Card translucent>
           <EmptyState
             icon={
@@ -305,6 +416,7 @@ export default function MacroTable({
                   className={`overflow-hidden transition-shadow duration-200 ${isPinned ? 'ring-1 ring-ink/20' : ''}`}
                 >
                   <ul className="divide-y divide-line/60">{meal.entries.map(renderEntryRow)}</ul>
+                  {renderPhotoRow(meal)}
                 </Card>
               </section>
             );
@@ -335,6 +447,33 @@ export default function MacroTable({
           setConfirmDeleteId(null);
         }}
         onCancel={() => setConfirmDeleteId(null)}
+      />
+
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          const mealGroupId = photoTargetRef.current;
+          e.target.value = '';
+          if (file && mealGroupId) onAddPhoto?.(mealGroupId, file);
+        }}
+      />
+
+      <MealPhotoViewer
+        photo={viewerMeal ? photos[viewerMeal.id] ?? null : null}
+        title={viewerMeal ? `Meal ${viewerMeal.number}` : ''}
+        onClose={() => setViewerMeal(null)}
+        onReplace={(file) => {
+          if (viewerMeal) onAddPhoto?.(viewerMeal.id, file);
+          setViewerMeal(null);
+        }}
+        onRemove={() => {
+          if (viewerMeal) onRemovePhoto?.(viewerMeal.id);
+          setViewerMeal(null);
+        }}
       />
 
       <NameMealDialog

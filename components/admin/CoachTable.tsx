@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { format, addDays } from 'date-fns';
-import type { CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis } from '@/types';
+import type { CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, MealPhoto } from '@/types';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import SegmentedControl from '@/components/admin/SegmentedControl';
 import DayTimeline from '@/components/admin/DayTimeline';
@@ -20,6 +20,8 @@ interface CoachTableProps {
   expandedRows: Set<string>;
   loadingExpanded: Set<string>;
   expandedRowsData: Map<string, Record<string, FoodEntry[]>>;
+  /** Client meal photos (last 7 days) by user, then meal id */
+  mealPhotosData?: Map<string, Record<string, MealPhoto>>;
   expandedRowViewMode: Map<string, 'table' | 'log' | 'coaching'>;
   coachingAnalysisData: Map<string, MealCoachingAnalysis>;
   loadingCoaching: Set<string>;
@@ -50,6 +52,7 @@ export default function CoachTable({
   expandedRows,
   loadingExpanded,
   expandedRowsData,
+  mealPhotosData,
   expandedRowViewMode,
   coachingAnalysisData,
   loadingCoaching,
@@ -265,6 +268,7 @@ export default function CoachTable({
                                       targetProtein={user.target_protein}
                                       maintenanceCalories={user.maintenance_calories}
                                       timezone={getTimezone?.(user.user_id)}
+                                      photos={mealPhotosData?.get(user.user_id)}
                                     />
                                   );
                                 })}

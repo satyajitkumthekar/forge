@@ -217,6 +217,7 @@ export function getCacheStats() {
 // duplicate in lib/cache.ts)
 export const CACHE_KEYS = {
   entries: (date: string) => `entries_${date}`,
+  mealPhotos: (date: string) => `meal_photos_${date}`,
   calendarMonth: (month: string) => `calendar_${month}`,
   settings: 'user_settings',
   analytics: 'analytics_data',
@@ -228,4 +229,5 @@ export const CACHE_KEYS = {
   cookbooks: 'cookbooks',
   reflection: 'active_reflection',
   macrosHidden: 'macros_hidden',
+  mealPhotosEnabled: 'meal_photos_enabled',
 };

@@ -10,7 +10,12 @@ import type { FoodEntry } from '@/types';
 import type { MealTarget } from '@/utils/meal-groups';
 
 interface ChatInputProps {
-  onFoodLogged: (entry: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>) => void;
+  /** pendingId is the loading row from onAnalyzeStart, which the entry replaces */
+  onFoodLogged: (entry: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>, pendingId?: string) => void;
+  /** Shows a loading row in the list the moment the user hits Send; returns its id */
+  onAnalyzeStart?: (label: string) => string;
+  /** Analysis failed: drop the loading row */
+  onAnalyzeFailed?: (pendingId: string) => void;
   /** Where the next log lands; null hides the line (empty day = Meal 1) */
   mealTarget?: MealTarget | null;
   onNewMeal?: () => void;
@@ -29,7 +34,7 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
-export default function ChatInput({ onFoodLogged, mealTarget, onNewMeal, onClearPin, inputRef }: ChatInputProps) {
+export default function ChatInput({ onFoodLogged, onAnalyzeStart, onAnalyzeFailed, mealTarget, onNewMeal, onClearPin, inputRef }: ChatInputProps) {
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -60,16 +65,46 @@ export default function ChatInput({ onFoodLogged, mealTarget, onNewMeal, onClear
     }
   };
 
+  const resetImage = () => {
+    setImage(null);
+    setImagePreview(null);
+    const fileInput = document.getElementById('chat-image-input') as HTMLInputElement;
+    if (fileInput) fileInput.value = '';
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // Only Send waits on the analysis; typing the next item stays open
+    if (loading) return;
 
     if (!description.trim() && !image) {
       setError('Please provide either a description or an image');
       return;
     }
 
+    // Take what was sent and clear the bar right away; the list shows a
+    // loading row in its place until the numbers come back
+    const sentDescription = description;
+    const sentImage = image;
+    const sentPreview = imagePreview;
+    const pendingId = onAnalyzeStart?.(sentDescription.trim() || 'Photo');
+    setDescription('');
+    resetImage();
+
     setLoading(true);
     setError('');
+
+    // Put a failed item back in the bar (unless the user already started
+    // the next one) so retrying is one tap
+    const fail = (message: string) => {
+      if (pendingId) onAnalyzeFailed?.(pendingId);
+      setError(message);
+      setDescription((current) => current || sentDescription);
+      if (sentImage) {
+        setImage((current) => current ?? sentImage);
+        setImagePreview((current) => current ?? sentPreview);
+      }
+    };
 
     try {
       // Check rate limit BEFORE making API call (using abstraction)
@@ -77,45 +112,34 @@ export default function ChatInput({ onFoodLogged, mealTarget, onNewMeal, onClear
 
       if (!canProceed) {
         const status = await db.rateLimit.getStatus();
-        setError(`Rate limit reached (${status.calls_used}/${status.calls_limit}). Resets at ${new Date(status.resets_at).toLocaleTimeString()}`);
-        setLoading(false);
+        fail(`Rate limit reached (${status.calls_used}/${status.calls_limit}). Resets at ${new Date(status.resets_at).toLocaleTimeString()}`);
         return;
       }
 
       // Call API using abstraction (API key is safe on server!)
-      const nutritionData = await api.analyzeFood(description, image || undefined);
+      const nutritionData = await api.analyzeFood(sentDescription, sentImage || undefined);
 
       // Success - pass data to parent
       // Note: We don't store image_data anymore (only needed for GPT analysis)
-      onFoodLogged({
-        name: nutritionData.name,
-        calories: nutritionData.calories,
-        protein: nutritionData.protein,
-        description: description || nutritionData.name,
-        // image_data removed - not stored in database (only sent to GPT for analysis)
-      });
-
-      // Reset form
-      setDescription('');
-      setImage(null);
-      setImagePreview(null);
-      const fileInput = document.getElementById('chat-image-input') as HTMLInputElement;
-      if (fileInput) fileInput.value = '';
-
+      onFoodLogged(
+        {
+          name: nutritionData.name,
+          calories: nutritionData.calories,
+          protein: nutritionData.protein,
+          description: sentDescription || nutritionData.name,
+          // image_data removed - not stored in database (only sent to GPT for analysis)
+        },
+        pendingId
+      );
     } catch (err) {
       console.error('Food analysis error:', err);
-      setError(err instanceof Error ? err.message : 'Failed to analyze food. Please try again.');
+      fail(err instanceof Error ? err.message : 'Failed to analyze food. Please try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const clearImage = () => {
-    setImage(null);
-    setImagePreview(null);
-    const fileInput = document.getElementById('chat-image-input') as HTMLInputElement;
-    if (fileInput) fileInput.value = '';
-  };
+  const clearImage = resetImage;
 
   return (
     // In-flow footer: the parent screen's flex column pins it above the tab
@@ -162,7 +186,7 @@ export default function ChatInput({ onFoodLogged, mealTarget, onNewMeal, onClear
               <button
                 type="button"
                 onClick={onNewMeal}
-                disabled={loading || mealTarget.isNew}
+                disabled={mealTarget.isNew}
                 className={`flex-shrink-0 min-h-[32px] px-2.5 -mr-1 flex items-center gap-1 text-xs font-medium text-ink-soft hover:text-ink hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150 disabled:opacity-0 disabled:pointer-events-none`}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
@@ -174,7 +198,6 @@ export default function ChatInput({ onFoodLogged, mealTarget, onNewMeal, onClear
               <button
                 type="button"
                 onClick={onClearPin}
-                disabled={loading}
                 aria-label="Back to automatic meals"
                 className="flex-shrink-0 min-w-[32px] min-h-[32px] -mr-1 flex items-center justify-center text-ink-muted hover:text-ink hover:bg-paper-inset active:bg-paper-deep rounded-ctrl transition duration-150 animate-fade-in"
               >
@@ -199,7 +222,6 @@ export default function ChatInput({ onFoodLogged, mealTarget, onNewMeal, onClear
               accept="image/*"
               onChange={handleImageChange}
               className="hidden"
-              disabled={loading}
             />
           </label>
 
@@ -215,7 +237,6 @@ export default function ChatInput({ onFoodLogged, mealTarget, onNewMeal, onClear
                 : 'Add 1 or multiple items (e.g., 2 rotis, dal, rice)'
             }
             className="flex-1 min-w-0 px-3 py-2.5 border border-line-strong rounded-ctrl focus:outline-none focus:ring-1 focus:ring-ink-muted bg-paper-raised/70 backdrop-blur-sm text-base text-ink placeholder:text-ink-faint transition duration-150"
-            disabled={loading}
           />
 
           {/* Send Button */}
@@ -230,7 +251,7 @@ export default function ChatInput({ onFoodLogged, mealTarget, onNewMeal, onClear
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                 </svg>
-                <span className="hidden sm:inline">Analyzing...</span>
+                <span className="hidden sm:inline">Analyzing…</span>
               </>
             ) : (
               <>
