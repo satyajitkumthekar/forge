@@ -10,7 +10,7 @@ import { toast } from '@/lib/toast';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import type { UserSettings, RateLimitStatus } from '@/types';
-import { useMacrosHidden } from '@/utils/use-macros-hidden';
+import { useMacroVisibility } from '@/utils/use-macro-visibility';
 
 // Sanity bounds; values outside these are almost certainly typos
 const LIMITS = {
@@ -21,9 +21,23 @@ const LIMITS = {
 
 type FieldKey = keyof typeof LIMITS;
 
+const FIELDS: { key: FieldKey; label: string; unit: string; hint: string; macro: 'calories' | 'protein' }[] = [
+  { key: 'target_calories', label: 'Target Calories', unit: 'cal/day', hint: 'Your daily calorie intake goal', macro: 'calories' },
+  { key: 'maintenance_calories', label: 'Maintenance Calories', unit: 'cal/day', hint: 'Calories to maintain your current weight', macro: 'calories' },
+  { key: 'target_protein', label: 'Target Protein', unit: 'g/day', hint: 'Your daily protein goal in grams', macro: 'protein' },
+];
+
 export default function SettingsScreen() {
-  // Coach has hidden numbers: targets are theirs to manage, nothing to show here
-  const macrosHidden = useMacrosHidden();
+  // A number the coach has hidden is theirs to manage: its target is neither
+  // shown here nor saved from here
+  const visibility = useMacroVisibility();
+  const fields = FIELDS.filter((field) => visibility[field.macro]);
+  const managedByCoach =
+    !visibility.calories && visibility.protein
+      ? 'Your coach is managing your calorie targets.'
+      : visibility.calories && !visibility.protein
+        ? 'Your coach is managing your protein target.'
+        : null;
   const router = useRouter();
   const [settings, setSettings] = useState<UserSettings | null>(null);
   const [rateLimitStatus, setRateLimitStatus] = useState<RateLimitStatus | null>(null);
@@ -67,11 +81,13 @@ export default function SettingsScreen() {
     loadData();
   }, []);
 
-  const validate = (): Record<FieldKey, number> | null => {
+  // Only the fields on screen are checked and saved; a hidden number's
+  // target stays exactly as the coach set it
+  const validate = (): Partial<Record<FieldKey, number>> | null => {
     const errors: Partial<Record<FieldKey, string>> = {};
-    const values = {} as Record<FieldKey, number>;
+    const values: Partial<Record<FieldKey, number>> = {};
 
-    (Object.keys(LIMITS) as FieldKey[]).forEach((key) => {
+    fields.forEach(({ key }) => {
       const { min, max, label } = LIMITS[key];
       const parsed = parseInt(form[key], 10);
       if (form[key].trim() === '' || isNaN(parsed)) {
@@ -149,12 +165,6 @@ export default function SettingsScreen() {
     );
   }
 
-  const fields: { key: FieldKey; label: string; unit: string; hint: string }[] = [
-    { key: 'target_calories', label: 'Target Calories', unit: 'cal/day', hint: 'Your daily calorie intake goal' },
-    { key: 'maintenance_calories', label: 'Maintenance Calories', unit: 'cal/day', hint: 'Calories to maintain your current weight' },
-    { key: 'target_protein', label: 'Target Protein', unit: 'g/day', hint: 'Your daily protein goal in grams' },
-  ];
-
   return (
     <div className="flex flex-col h-[calc(100dvh-var(--safe-top))] bg-paper">
       {/* Header */}
@@ -178,7 +188,7 @@ export default function SettingsScreen() {
       {/* Content */}
       <div className="flex-1 overflow-y-auto px-4 md:px-6 lg:px-8 py-4">
         <div className="max-w-2xl mx-auto space-y-5">
-          {macrosHidden ? (
+          {fields.length === 0 ? (
             <div className="rounded-card border border-line bg-paper-raised px-4 py-5 text-center animate-fade-in">
               <div className="text-sm font-semibold tracking-tight text-ink">Your coach is managing your targets</div>
               <p className="mt-1 text-xs text-ink-muted leading-relaxed">
@@ -204,6 +214,7 @@ export default function SettingsScreen() {
                 disabled={saving}
               />
             ))}
+            {managedByCoach && <p className="text-xs text-ink-muted">{managedByCoach}</p>}
           </div>
 
           {/* Action Buttons */}

@@ -3,11 +3,15 @@
  * vertical timeline split into the same meal segments the client sees
  * ("Meal 1, 2, 3"), with per-entry timestamps and gaps between meals.
  * Display-only: totals/colors are pure derivations.
+ *
+ * Staff always see calories and protein. Carbs and fat appear only for a
+ * client who is shown them, as one faint line under the day, each meal and
+ * each food; for everyone else this view is unchanged.
  */
 
 import React, { useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import type { FoodEntry, MealPhoto } from '@/types';
+import type { FoodEntry, MacroVisibility, MealPhoto } from '@/types';
 import MealPhotoViewer from '@/components/MealPhotoViewer';
 import {
   formatLogTime,
@@ -16,6 +20,7 @@ import {
   getProteinColor,
 } from '@/components/admin/helpers';
 import { groupIntoMeals, formatMealTime } from '@/utils/meal-groups';
+import { carbsFatLine, carbsFatTotalLine, groupCarbsFatLine, summarizeCarbsFat } from '@/utils/macros';
 
 interface DayTimelineProps {
   dayName: string;
@@ -29,6 +34,8 @@ interface DayTimelineProps {
   timezone?: string | null;
   /** Client's meal photos by meal id (kept 7 days) */
   photos?: Record<string, MealPhoto>;
+  /** The client's number switches; only carbs and fat matter here */
+  clientVisibility?: MacroVisibility;
 }
 
 export default function DayTimeline({
@@ -41,6 +48,7 @@ export default function DayTimeline({
   maintenanceCalories,
   timezone,
   photos,
+  clientVisibility,
 }: DayTimelineProps) {
   const [viewing, setViewing] = useState<{ photo: MealPhoto; number: number } | null>(null);
   // Calculate totals for this day
@@ -48,6 +56,16 @@ export default function DayTimeline({
   const totalPro = entries.reduce((sum, e) => sum + e.protein, 0);
 
   const meals = useMemo(() => groupIntoMeals(entries), [entries]);
+
+  // Just the optional pair, and only what this client is shown
+  const carbsFat: MacroVisibility = {
+    calories: false,
+    protein: false,
+    carbs: clientVisibility?.carbs === true,
+    fat: clientVisibility?.fat === true,
+  };
+  // Null when the switches are off or none of the day's food has the numbers
+  const dayCarbsFat = entries.length > 0 ? summarizeCarbsFat(entries, carbsFat) : null;
 
   const calColor = getCaloriesColor(totalCal, targetCalories, maintenanceCalories);
   const proColor = getProteinColor(totalPro, targetProtein);
@@ -69,6 +87,13 @@ export default function DayTimeline({
             </span>
           </div>
         )}
+        {dayCarbsFat && (
+          <div className="mt-1 text-[11px] text-ink-muted tabular-nums animate-fade-in">
+            {carbsFatTotalLine(dayCarbsFat, carbsFat)}
+            {/* A total that only covers some of the day's food says so */}
+            {dayCarbsFat.note && <div className="text-[10px] text-ink-faint">{dayCarbsFat.note}</div>}
+          </div>
+        )}
       </div>
 
       {/* Vertical timeline, one block per meal */}
@@ -79,6 +104,7 @@ export default function DayTimeline({
         {meals.map((meal, mealIdx) => {
           // Gap is measured from the end of the previous sitting to this one
           const gap = mealIdx > 0 ? formatLogGap(meals[mealIdx - 1].endedAt, meal.startedAt) : null;
+          const mealCarbsFat = groupCarbsFatLine(meal.entries, carbsFat);
           return (
             <React.Fragment key={meal.id}>
               {gap && (
@@ -101,6 +127,9 @@ export default function DayTimeline({
                     {meal.calories}c · {meal.protein.toFixed(0)}p
                   </div>
                 </div>
+                {mealCarbsFat && (
+                  <div className="text-right text-[10px] text-ink-faint tabular-nums">{mealCarbsFat}</div>
+                )}
                 {photos?.[meal.id] && (
                   <button
                     onClick={() => setViewing({ photo: photos[meal.id], number: meal.number })}
@@ -115,7 +144,9 @@ export default function DayTimeline({
                   </button>
                 )}
               </div>
-              {meal.entries.map((entry) => (
+              {meal.entries.map((entry) => {
+                const entryCarbsFat = carbsFatLine(entry, carbsFat);
+                return (
                 <div key={entry.id} className="relative py-1 animate-entry-in">
                   <span className="absolute -left-[17px] top-[7px] h-[7px] w-[7px] rounded-full border border-line-strong bg-paper-raised" />
                   <div className="flex items-baseline justify-between gap-2">
@@ -130,8 +161,12 @@ export default function DayTimeline({
                   <div className="text-[11px] text-ink-muted tabular-nums">
                     {entry.calories}c · {Number(entry.protein).toFixed(0)}p
                   </div>
+                  {entryCarbsFat && (
+                    <div className="text-[11px] text-ink-faint tabular-nums">{entryCarbsFat}</div>
+                  )}
                 </div>
-              ))}
+                );
+              })}
             </React.Fragment>
           );
         })}

@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { format, addDays } from 'date-fns';
-import type { CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, MealPhoto } from '@/types';
+import type { CoachAnalyticsRow, FoodEntry, MacroVisibility, MealCoachingAnalysis, MealPhoto } from '@/types';
 import { SkeletonRow } from '@/components/ui/Skeleton';
 import SegmentedControl from '@/components/admin/SegmentedControl';
 import DayTimeline from '@/components/admin/DayTimeline';
@@ -30,6 +30,9 @@ interface CoachTableProps {
   onRefreshCoaching: (userId: string) => void;
   /** Client timezone lookup — timelines render log times in the client's clock */
   getTimezone?: (userId: string) => string | null | undefined;
+  /** Client number-switch lookup: the day view shows carbs and fat only for
+   *  a client who is shown them. The weekly grid stays calories and protein. */
+  getMacroVisibility?: (userId: string) => MacroVisibility;
   /** Opens the anchor-cookbook panel for a client */
   onOpenCookbooks?: (userId: string, email: string) => void;
   /** Morning-practice marker for a logged day cell; null = no marker */
@@ -60,6 +63,7 @@ export default function CoachTable({
   onUpdateViewMode,
   onRefreshCoaching,
   getTimezone,
+  getMacroVisibility,
   onOpenCookbooks,
   getReflectionMarker,
   onViewReflection,
@@ -269,6 +273,7 @@ export default function CoachTable({
                                       maintenanceCalories={user.maintenance_calories}
                                       timezone={getTimezone?.(user.user_id)}
                                       photos={mealPhotosData?.get(user.user_id)}
+                                      clientVisibility={getMacroVisibility?.(user.user_id)}
                                     />
                                   );
                                 })}

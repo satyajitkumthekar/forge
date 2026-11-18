@@ -16,9 +16,10 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import NameMealDialog from '@/components/meals/NameMealDialog';
 import MealPhotoViewer from '@/components/MealPhotoViewer';
 import type { FoodItemInput } from '@/lib/database';
-import type { FoodEntry, MealPhoto } from '@/types';
+import type { FoodEntry, MacroVisibility, MealPhoto } from '@/types';
 import { formatMealTime, type MealGroup } from '@/utils/meal-groups';
 import { useCountUp } from '@/utils/use-count-up';
+import { carbsFatLine, groupCarbsFatLine, showsCarbsOrFat, DEFAULT_MACRO_VISIBILITY } from '@/utils/macros';
 
 interface MacroTableProps {
   entries: FoodEntry[];
@@ -35,8 +36,9 @@ interface MacroTableProps {
   /** True when the target was picked by the user (vs the 60-minute rule) */
   pinned: boolean;
   onPickMeal: (groupId: string) => void;
-  /** Coach has hidden calorie & protein numbers: drop the Cal/Pro columns */
-  hideMacros?: boolean;
+  /** Which numbers this person sees. Calories and protein are the two
+   *  columns; carbs and fat are one small line under each food and meal. */
+  visibility?: MacroVisibility;
   /** One photo per meal, keyed by meal id. Omit onAddPhoto to hide photos. */
   photos?: Record<string, MealPhoto>;
   /** Meals whose photo is uploading right now */
@@ -53,13 +55,16 @@ interface MealHeaderProps {
   isPinned: boolean;
   selecting: boolean;
   onClick: () => void;
-  hideMacros: boolean;
+  visibility: MacroVisibility;
 }
 
-function MealHeader({ meal, isAutoTarget, isPinned, selecting, onClick, hideMacros }: MealHeaderProps) {
+function MealHeader({ meal, isAutoTarget, isPinned, selecting, onClick, visibility }: MealHeaderProps) {
   const shownCalories = useCountUp(meal.calories);
   const shownProtein = useCountUp(meal.protein, { decimals: 1 });
   const time = formatMealTime(meal);
+  // Only once every food in the meal has the numbers (a row still loading,
+  // or an older food without them, would make this a partial total)
+  const carbsFat = groupCarbsFatLine(meal.entries, visibility);
 
   return (
     <div
@@ -90,11 +95,16 @@ function MealHeader({ meal, isAutoTarget, isPinned, selecting, onClick, hideMacr
           <span className="text-sm font-semibold tracking-tight text-ink">Meal {meal.number}</span>
           <span className="text-xs text-ink-muted tabular-nums truncate">· {time}</span>
         </div>
-        {!hideMacros && (
+        {(visibility.calories || visibility.protein) && (
           <div className="mt-0.5 text-xs text-ink-muted tabular-nums whitespace-nowrap">
-            {shownCalories} cal
-            <span className="text-ink-faint"> · </span>
-            {shownProtein}g protein
+            {visibility.calories && <>{shownCalories} cal</>}
+            {visibility.calories && visibility.protein && <span className="text-ink-faint"> · </span>}
+            {visibility.protein && <>{shownProtein}g protein</>}
+          </div>
+        )}
+        {carbsFat && (
+          <div className="mt-0.5 text-xs text-ink-muted tabular-nums whitespace-nowrap animate-fade-in">
+            {carbsFat}
           </div>
         )}
       </div>
@@ -142,7 +152,7 @@ export default function MacroTable({
   targetGroupId,
   pinned,
   onPickMeal,
-  hideMacros = false,
+  visibility = DEFAULT_MACRO_VISIBILITY,
   photos = NO_PHOTOS,
   uploadingPhotoIds = NO_PENDING,
   onAddPhoto,
@@ -260,10 +270,12 @@ export default function MacroTable({
   const handleNameSave = (name: string) => {
     const items: FoodItemInput[] = entries
       .filter((entry) => selectedIds.has(entry.id))
-      .map(({ name: entryName, calories, protein, description }) => ({
+      .map(({ name: entryName, calories, protein, carbs, fat, description }) => ({
         name: entryName,
         calories,
         protein,
+        carbs,
+        fat,
         description,
       }));
 
@@ -272,26 +284,31 @@ export default function MacroTable({
     onSaveAsMeal?.(name, items);
   };
 
-  // Sent from the chat box, numbers still on the way: the typed text with a
-  // spinner, and shimmer where calories and protein will land
+  // Numbers still on the way (a food sent from the chat box, or a shortcut
+  // waiting on its carbs and fat): the text with a spinner, and shimmer
+  // wherever this person's numbers will land
   const renderPendingRow = (entry: FoodEntry) => (
     <li
       key={entry.id}
       aria-busy="true"
       className="flex items-center gap-3 pl-4 pr-1 min-h-[52px] animate-entry-in"
     >
-      <div className="flex-1 min-w-0 py-3 flex items-center gap-2">
-        <svg className="animate-spin h-3.5 w-3.5 flex-shrink-0 text-ink-faint" viewBox="0 0 24 24" aria-hidden="true">
-          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-        </svg>
-        <span className="text-sm text-ink-muted leading-snug break-words min-w-0">{entry.name}</span>
+      <div className="flex-1 min-w-0 py-3">
+        <div className="flex items-center gap-2">
+          <svg className="animate-spin h-3.5 w-3.5 flex-shrink-0 text-ink-faint" viewBox="0 0 24 24" aria-hidden="true">
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+          </svg>
+          <span className="text-sm text-ink-muted leading-snug break-words min-w-0">{entry.name}</span>
+        </div>
+        {/* Indented past the spinner so it sits where the line will */}
+        {showsCarbsOrFat(visibility) && <Skeleton className="mt-1.5 ml-[22px] h-3 w-28" />}
       </div>
 
-      {!hideMacros && (
+      {(visibility.calories || visibility.protein) && (
         <div className="flex items-center gap-2 shrink-0" aria-hidden="true">
-          <Skeleton className="h-3.5 w-8 ml-2" />
-          <Skeleton className="h-3.5 w-8 ml-2" />
+          {visibility.calories && <Skeleton className="h-3.5 w-8 ml-2" />}
+          {visibility.protein && <Skeleton className="h-3.5 w-8 ml-2" />}
         </div>
       )}
 
@@ -303,6 +320,7 @@ export default function MacroTable({
   const renderEntryRow = (entry: FoodEntry) => {
     if (pendingIds.has(entry.id)) return renderPendingRow(entry);
     const isSelected = selectedIds.has(entry.id);
+    const carbsFat = carbsFatLine(entry, visibility);
     return (
       <li
         key={entry.id}
@@ -311,12 +329,19 @@ export default function MacroTable({
           selecting ? 'cursor-pointer active:bg-paper-inset/60' : ''
         } ${isSelected ? 'bg-paper-inset/60' : ''}`}
       >
-        <div className="flex-1 min-w-0 py-3 text-sm text-ink leading-snug break-words">{entry.name}</div>
+        <div className="flex-1 min-w-0 py-3">
+          <div className="text-sm text-ink leading-snug break-words">{entry.name}</div>
+          {carbsFat && <div className="mt-0.5 text-xs text-ink-muted tabular-nums">{carbsFat}</div>}
+        </div>
 
-        {!hideMacros && (
+        {(visibility.calories || visibility.protein) && (
           <div className="flex items-baseline gap-2 shrink-0 tabular-nums">
-            <span className="w-10 text-right text-sm font-medium text-ink">{entry.calories}</span>
-            <span className="w-10 text-right text-sm text-ink-muted">{entry.protein}g</span>
+            {visibility.calories && (
+              <span className="w-10 text-right text-sm font-medium text-ink">{entry.calories}</span>
+            )}
+            {visibility.protein && (
+              <span className="w-10 text-right text-sm text-ink-muted">{entry.protein}g</span>
+            )}
           </div>
         )}
 
@@ -409,7 +434,7 @@ export default function MacroTable({
                   isPinned={isPinned}
                   selecting={selecting}
                   onClick={() => (selecting ? toggleMealSelected(meal) : onPickMeal(meal.id))}
-                  hideMacros={hideMacros}
+                  visibility={visibility}
                 />
                 <Card
                   translucent

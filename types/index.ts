@@ -1,11 +1,21 @@
 // Type Definitions for Food Tracker
 
+/** The four numbers the app knows about a food */
+export type MacroKey = 'calories' | 'protein' | 'carbs' | 'fat';
+
+/** Which of the four numbers staff let a client see (see utils/macros.ts) */
+export type MacroVisibility = Record<MacroKey, boolean>;
+
 export interface FoodEntry {
   id: string;
   entry_date: string;
   name: string;
   calories: number;
   protein: number;
+  /** Grams. null = unknown (logged before the app tracked it, or the
+   *  estimate failed), which is never the same as zero */
+  carbs?: number | null;
+  fat?: number | null;
   image_data?: string;
   description?: string;
   created_at: string;
@@ -34,6 +44,9 @@ export interface MealItem {
   name: string;
   calories: number;
   protein: number;
+  /** Grams; null = unknown (see FoodEntry) */
+  carbs?: number | null;
+  fat?: number | null;
   description?: string | null;
   position: number;
 }
@@ -61,6 +74,9 @@ export interface CookbookIngredient {
   /** Estimated share of the meal's totals — becomes the logged preset row */
   calories: number;
   protein: number;
+  /** Grams; absent on cookbooks converted before carbs and fat were tracked */
+  carbs?: number | null;
+  fat?: number | null;
 }
 
 export interface CookbookMeal {
@@ -74,6 +90,9 @@ export interface CookbookMeal {
   zinger: string;
   calories: number;
   protein: number;
+  /** Grams; absent on cookbooks converted before carbs and fat were tracked */
+  carbs?: number | null;
+  fat?: number | null;
 }
 
 export interface AnchorCookbookContent {
@@ -269,8 +288,13 @@ export interface UserMetric {
   coach_reminder: string | null;
   timezone?: string | null;
   reflections_enabled: boolean;
-  /** Staff have hidden calorie & protein numbers from this client */
+  /** Older single switch; equals NOT (show_calories AND show_protein) */
   macros_hidden?: boolean;
+  /** The four numbers staff let this client see (defaults: on, on, off, off) */
+  show_calories?: boolean;
+  show_protein?: boolean;
+  show_carbs?: boolean;
+  show_fat?: boolean;
   /** Staff have switched on meal photos for this client */
   meal_photos_enabled?: boolean;
   access_granted: boolean;

@@ -4,6 +4,7 @@
  */
 
 import type { FoodEntry, FrequentItem, Meal } from '../types';
+import { hasCarbsFat } from './macros';
 
 const COMMON_WORDS = new Set([
   'a', 'an', 'the', 'of', 'with', 'and', 'or', 'in', 'on', 'at', 'to', 'for',
@@ -121,12 +122,22 @@ export const getFrequentItems = (
       const avgProtein = Math.round(
         group.reduce((sum, e) => sum + e.protein, 0) / group.length
       );
+      // Carbs and fat ride along when the group has them, averaged over the
+      // entries that do. Unknown stays unknown: a group logged entirely
+      // before they were tracked carries none (never zero).
+      const withCarbsFat = group.filter(hasCarbsFat);
+      const average = (pick: (entry: FoodEntry) => number) =>
+        withCarbsFat.length > 0
+          ? Math.round((withCarbsFat.reduce((sum, e) => sum + pick(e), 0) / withCarbsFat.length) * 10) / 10
+          : null;
 
       return {
         type: 'item' as const,
         name: representative.name,
         calories: avgCalories,
         protein: avgProtein,
+        carbs: average((e) => Number(e.carbs)),
+        fat: average((e) => Number(e.fat)),
         image_data: representative.image_data,
         description: representative.description,
         count: group.length,

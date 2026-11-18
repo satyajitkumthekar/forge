@@ -16,7 +16,7 @@ import { format } from 'date-fns';
 import { api } from '@/lib/api';
 import { db } from '@/lib/database';
 import { toast } from '@/lib/toast';
-import type { AnchorCookbook } from '@/types';
+import type { AnchorCookbook, MacroVisibility } from '@/types';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -27,6 +27,9 @@ interface CookbookPanelProps {
   userId: string;
   email: string;
   fullName?: string | null;
+  /** The client's number switches: the preview shows carbs and fat only
+   *  for a client who is shown them */
+  clientVisibility?: MacroVisibility;
   onClose: () => void;
 }
 
@@ -41,7 +44,7 @@ const fileToBase64 = (file: File): Promise<string> => {
 
 type ConfirmKind = 'publish' | 'unpublish' | 'delete';
 
-export default function CookbookPanel({ userId, email, fullName, onClose }: CookbookPanelProps) {
+export default function CookbookPanel({ userId, email, fullName, clientVisibility, onClose }: CookbookPanelProps) {
   const displayName = fullName?.trim() || email;
   const [cookbooks, setCookbooks] = useState<AnchorCookbook[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -315,7 +318,7 @@ export default function CookbookPanel({ userId, email, fullName, onClose }: Cook
         </div>
       ) : selected ? (
         /* Detail: the exact document the client will see */
-        <CookbookView cookbook={selected} mode="preview" />
+        <CookbookView cookbook={selected} mode="preview" clientVisibility={clientVisibility} />
       ) : (
         /* List level */
         <div className="max-w-2xl mx-auto px-4 py-6">

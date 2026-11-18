@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { db } from '@/lib/database';
 import type { FoodEntry } from '@/types';
 import type { MealTarget } from '@/utils/meal-groups';
+import { cleanGrams } from '@/utils/macros';
 
 interface ChatInputProps {
   /** pendingId is the loading row from onAnalyzeStart, which the entry replaces */
@@ -126,6 +127,10 @@ export default function ChatInput({ onFoodLogged, onAnalyzeStart, onAnalyzeFaile
           name: nutritionData.name,
           calories: nutritionData.calories,
           protein: nutritionData.protein,
+          // Saved for everyone, shown only to those switched on. Unknown
+          // stays null, never zero.
+          carbs: cleanGrams(nutritionData.carbs),
+          fat: cleanGrams(nutritionData.fat),
           description: sentDescription || nutritionData.name,
           // image_data removed - not stored in database (only sent to GPT for analysis)
         },

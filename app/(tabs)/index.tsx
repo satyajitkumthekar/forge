@@ -12,11 +12,12 @@ import { toast } from '@/lib/toast';
 import { queueOperation, processQueue, checkOnlineStatus } from '@/utils/offline-queue';
 import { getFrequentItems } from '@/utils/frequent-items';
 import { groupIntoMeals, resolveTargetMeal, type MealPin } from '@/utils/meal-groups';
-import { useMacrosHidden, refreshMacrosHidden } from '@/utils/use-macros-hidden';
+import { useMacroVisibility, refreshMacroVisibility } from '@/utils/use-macro-visibility';
+import { ensureCarbsFat, hasCarbsFat, showsCarbsOrFat, CARBS_FAT_MISSED_MESSAGE } from '@/utils/macros';
 import { useMealPhotosEnabled, refreshMealPhotosEnabled } from '@/utils/use-meal-photos-enabled';
 import ChatInput from '@/components/ChatInput';
 import MacroTable from '@/components/MacroTable';
-import Totals from '@/components/Totals';
+import Totals, { CarbsFatTotals } from '@/components/Totals';
 import FrequentItems from '@/components/FrequentItems';
 import CalendarSheet from '@/components/CalendarSheet';
 import FeatureAnnouncement from '@/components/FeatureAnnouncement';
@@ -30,7 +31,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { appToday, todayLocal, addDaysYMD, maxNavigableDate, formatDisplayDate, parseYMD } from '@/utils/date';
 import { tokens } from '@/lib/design-tokens';
 import Card from '@/components/ui/Card';
-import { SkeletonRow, SkeletonDonut } from '@/components/ui/Skeleton';
+import { Skeleton, SkeletonRow, SkeletonDonut } from '@/components/ui/Skeleton';
 import type { FoodEntry, UserSettings, FrequentItem, Meal, MealPhoto, AnchorCookbook } from '@/types';
 import { compressImage } from '@/utils/image';
 
@@ -92,7 +93,7 @@ const testSeedFor = (key: TestScenarioKey, settings: UserSettings): FoodItemInpu
   }
 };
 
-/** Replaces the macro rings when the coach has hidden numbers */
+/** Replaces the macro rings when the coach has hidden both calories and protein */
 function DayCountSummary({ meals, items, isToday }: { meals: number; items: number; isToday: boolean }) {
   const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? '' : 's'}`;
   return (
@@ -192,8 +193,11 @@ export default function TrackScreen() {
   // 'new' = force a new meal, otherwise a pinned earlier meal's group id.
   // Session-only on purpose: it resets on date change and app reopen.
   const [mealPin, setMealPin] = useState<MealPin>(null);
-  // Coach can hide every calorie & protein number (and status colour)
-  const macrosHidden = useMacrosHidden();
+  // Staff choose which of the four numbers this person sees: calories and
+  // protein (with their status colours) by default, carbs and fat when on
+  const visibility = useMacroVisibility();
+  const showsRings = visibility.calories || visibility.protein;
+  const wantsCarbsFat = showsCarbsOrFat(visibility);
   // Staff switch meal photos on per client; off hides the feature entirely
   const photosEnabled = useMealPhotosEnabled();
   // Ticks each minute so the auto target rolls to "Starting Meal N" once
@@ -455,7 +459,7 @@ export default function TrackScreen() {
     const loadData = async () => {
       const seq = ++loadSeqRef.current;
       // Re-check on every load/tab focus so a coach's change lands quickly
-      refreshMacrosHidden();
+      refreshMacroVisibility();
       refreshMealPhotosEnabled();
 
       try {
@@ -569,10 +573,12 @@ export default function TrackScreen() {
     setEntries(next);
   };
 
+  // Resolves true when the entry was saved (or queued offline), false when
+  // it was dropped, so callers only confirm what really happened
   const handleFoodLogged = async (
     foodData: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>,
     pendingId?: string
-  ) => {
+  ): Promise<boolean> => {
     // Invalidate any in-flight background load; this mutation owns the final state
     loadSeqRef.current++;
 
@@ -618,7 +624,7 @@ export default function TrackScreen() {
         });
         setError('Offline: Entry saved and will sync when online.');
         setTimeout(() => setError(''), 3000);
-        return;
+        return true;
       }
 
       try {
@@ -636,6 +642,7 @@ export default function TrackScreen() {
               : [...list, saved]
         );
         setDataVersion((prev) => prev + 1);
+        return true;
 
       } catch (err) {
         console.error('Error adding entry:', err);
@@ -647,15 +654,35 @@ export default function TrackScreen() {
             data: insertData,
           });
           setError('Connection lost: Entry saved and will sync when online.');
-        } else {
-          setError('Failed to add entry. Please try again.');
-          commitEntries(date, listFor().filter((entry) => entry.id !== tempId));
+          return true;
         }
+        setError('Failed to add entry. Please try again.');
+        commitEntries(date, listFor().filter((entry) => entry.id !== tempId));
+        return false;
       }
     } catch (err) {
       // Catch any unexpected errors
       console.error('Unexpected error in handleFoodLogged:', err);
+      return false;
     }
+  };
+
+  // Shortcuts (Quick Add, Duplicate) copy a food's numbers instead of asking
+  // the AI. For someone who sees carbs or fat, a copy that lacks them gets
+  // just those two worked out first, behind the same loading row a typed
+  // food shows; calories and protein stay exactly as they were. Everyone
+  // else, and any food that already has both, logs instantly with no request.
+  const logShortcut = async (foodData: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>) => {
+    if (!wantsCarbsFat || hasCarbsFat(foodData) || !checkOnlineStatus()) {
+      await handleFoodLogged(foodData);
+      return;
+    }
+
+    const pendingId = handleAnalyzeStart(foodData.name);
+    const { foods, complete } = await ensureCarbsFat([foodData]);
+    const logged = await handleFoodLogged(foods[0], pendingId);
+    // Logging is never blocked by an optional number: say so plainly instead
+    if (logged && !complete) toast.info(CARBS_FAT_MISSED_MESSAGE);
   };
 
   // Meal photos load alongside the day. Cached under the signed URLs' 1-hour
@@ -734,40 +761,77 @@ export default function TrackScreen() {
     // Invalidate any in-flight background load; this mutation owns the final state
     loadSeqRef.current++;
 
-    // Captured before the optimistic update so a failed add rolls back to
-    // exactly what was showing (not a stale closure re-read after awaits)
-    const originalEntries = entries;
+    // Fixed at the tap: the day and the meal segment this lands in. Every
+    // step below reads the live list for that day, so a wait (or the user
+    // moving to another day meanwhile) can never drop or misplace rows.
+    const date = currentDate;
     const { mealGroupId, createdAt } = takeMealTarget();
+    const cacheKey = CACHE_KEYS.entries(date);
+    const listFor = () =>
+      date === currentDateRef.current ? entriesRef.current : getCached<FoodEntry[]>(cacheKey) ?? [];
+
+    let items: FoodItemInput[] = meal.items.map(({ name, calories, protein, carbs, fat, description }) => ({
+      name,
+      calories,
+      protein,
+      carbs,
+      fat,
+      description,
+    }));
+    let carbsFatMissed = false;
+
+    // For someone who sees carbs or fat, a meal saved before the app tracked
+    // them gets those two worked out first: one request for the whole meal,
+    // behind loading rows. Calories and protein are never touched, and the
+    // saved meal itself is left as it is.
+    if (wantsCarbsFat && !items.every(hasCarbsFat) && checkOnlineStatus()) {
+      const stamp = Date.now();
+      const loadingRows: FoodEntry[] = items.map((item, i) => ({
+        id: `pending_${stamp}_${i}_${Math.random().toString(36).substring(2, 11)}`,
+        name: item.name,
+        calories: 0,
+        protein: 0,
+        entry_date: date,
+        created_at: createdAt,
+        user_id: settings.user_id,
+        meal_group_id: mealGroupId,
+      }));
+      const loadingIds = new Set(loadingRows.map((row) => row.id));
+      pendingRef.current = [...pendingRef.current, ...loadingRows];
+      setPendingEntries(pendingRef.current);
+
+      const estimate = await ensureCarbsFat(items);
+      items = estimate.foods;
+      carbsFatMissed = !estimate.complete;
+
+      pendingRef.current = pendingRef.current.filter((row) => !loadingIds.has(row.id));
+      setPendingEntries(pendingRef.current);
+      // A background load may have started during the wait; from here this
+      // mutation owns the final state again
+      loadSeqRef.current++;
+    }
 
     try {
       // Optimistic update: append ALL of the meal's items as temp entries
       const now = Date.now();
-      const tempEntries: FoodEntry[] = meal.items.map((item, i) => ({
+      const tempEntries: FoodEntry[] = items.map((item, i) => ({
         id: `temp_${now}_${i}_${Math.random().toString(36).substring(2, 11)}`,
-        entry_date: currentDate,
+        entry_date: date,
         name: item.name,
         calories: item.calories,
         protein: item.protein,
+        carbs: item.carbs ?? null,
+        fat: item.fat ?? null,
         description: item.description ?? undefined,
         created_at: createdAt,
         user_id: settings.user_id,
         meal_id: meal.id,
         meal_group_id: mealGroupId,
       }));
+      const tempIds = new Set(tempEntries.map((entry) => entry.id));
 
       // Update UI immediately
-      const optimisticEntries = [...entries, ...tempEntries];
-      setEntries(optimisticEntries);
-
-      const cacheKey = CACHE_KEYS.entries(currentDate);
-      setCached(cacheKey, optimisticEntries);
-
-      const items: FoodItemInput[] = meal.items.map(({ name, calories, protein, description }) => ({
-        name,
-        calories,
-        protein,
-        description,
-      }));
+      commitEntries(date, [...listFor(), ...tempEntries]);
 
       // Check if online
       const isOnline = checkOnlineStatus();
@@ -775,7 +839,7 @@ export default function TrackScreen() {
       if (!isOnline) {
         await queueOperation({
           type: 'add_meal',
-          date: currentDate,
+          date,
           items,
           mealId: meal.id,
           mealGroupId,
@@ -788,15 +852,17 @@ export default function TrackScreen() {
 
       try {
         // Make API call using abstraction
-        await db.food.addMany(currentDate, items, meal.id, { mealGroupId, createdAt });
+        await db.food.addMany(date, items, meal.id, { mealGroupId, createdAt });
 
         // Reload fresh data and update cache
-        const updatedEntries = await db.food.getByDate(currentDate);
-        setEntries(updatedEntries);
-        setCached(cacheKey, updatedEntries);
+        commitEntries(date, await db.food.getByDate(date));
         setDataVersion((prev) => prev + 1);
 
-        toast.success(`${meal.name} added · ${meal.items.length} items`);
+        if (carbsFatMissed) {
+          toast.info(CARBS_FAT_MISSED_MESSAGE);
+        } else {
+          toast.success(`${meal.name} added · ${meal.items.length} items`);
+        }
 
       } catch (err) {
         console.error('Error adding meal:', err);
@@ -804,7 +870,7 @@ export default function TrackScreen() {
         if (!checkOnlineStatus()) {
           await queueOperation({
             type: 'add_meal',
-            date: currentDate,
+            date,
             items,
             mealId: meal.id,
             mealGroupId,
@@ -813,8 +879,8 @@ export default function TrackScreen() {
           setError('Connection lost: Meal saved and will sync when online.');
         } else {
           setError('Failed to add meal. Please try again.');
-          setEntries(originalEntries);
-          setCached(cacheKey, originalEntries);
+          // Take back only this meal's rows; anything else logged meanwhile stays
+          commitEntries(date, listFor().filter((entry) => !tempIds.has(entry.id)));
         }
       }
     } catch (err) {
@@ -903,7 +969,7 @@ export default function TrackScreen() {
     if (!entryToDuplicate) return;
 
     const { id, entry_date, created_at, user_id, ...foodData } = entryToDuplicate;
-    await handleFoodLogged(foodData);
+    await logShortcut(foodData);
   };
 
   const handleFrequentItemClick = async (item: FrequentItem) => {
@@ -915,7 +981,7 @@ export default function TrackScreen() {
     }
 
     const { count, type, mealId, itemCount, ...foodData } = item;
-    await handleFoodLogged(foodData);
+    await logShortcut(foodData);
   };
 
   const navigateDate = (days: number) => {
@@ -961,8 +1027,8 @@ export default function TrackScreen() {
     }
   };
 
-  // Hidden numbers: the tint stays on the neutral ramp, no over/under signal
-  const calorieColor = macrosHidden ? tokens.colors.ink.faint : getCalorieColor();
+  // Calories hidden: the tint stays on the neutral ramp, no over/under signal
+  const calorieColor = visibility.calories ? getCalorieColor() : tokens.colors.ink.faint;
 
   // Premium gradient: status color at top, softened, fading into eggshell paper
   const getPastelGradient = (color: string) => {
@@ -1134,26 +1200,38 @@ export default function TrackScreen() {
       <div className="bg-paper-raised/80 backdrop-blur-md border-b border-line/70 px-4 md:px-6 lg:px-8 py-3">
         <div className="max-w-7xl mx-auto">
           {loading ? (
-            <div className="flex items-center justify-center gap-6">
-              <SkeletonDonut size={60} />
-              <SkeletonDonut size={60} />
+            // Placeholders match what this person is about to see: one ring
+            // per visible number, and the carbs and fat line when it is on
+            <div>
+              <div className="flex items-center justify-center gap-6">
+                {visibility.calories && <SkeletonDonut size={60} />}
+                {visibility.protein && <SkeletonDonut size={60} />}
+                {!showsRings && (
+                  <div className="min-h-[60px] flex items-center">
+                    <Skeleton className="h-4 w-36" />
+                  </div>
+                )}
+              </div>
+              {wantsCarbsFat && <Skeleton className="h-3 w-36 mx-auto mt-2" />}
             </div>
           ) : (
             <div className="animate-fade-in">
-              {macrosHidden ? (
-                <DayCountSummary
-                  meals={mealGroups.length}
-                  items={entries.length}
-                  isToday={currentDate === appToday()}
-                />
-              ) : (
+              {showsRings ? (
                 <Totals
                   entries={entries}
                   targetCalories={settings.target_calories}
                   targetProtein={settings.target_protein}
                   maintenanceCalories={settings.maintenance_calories}
+                  visibility={visibility}
+                />
+              ) : (
+                <DayCountSummary
+                  meals={mealGroups.length}
+                  items={entries.length}
+                  isToday={currentDate === appToday()}
                 />
               )}
+              <CarbsFatTotals entries={entries} visibility={visibility} />
             </div>
           )}
         </div>
@@ -1180,7 +1258,7 @@ export default function TrackScreen() {
               targetGroupId={mealTarget.isNew ? null : mealTarget.groupId}
               pinned={mealTarget.mode === 'pinned'}
               onPickMeal={handlePickMeal}
-              hideMacros={macrosHidden}
+              visibility={visibility}
               photos={mealPhotos}
               uploadingPhotoIds={uploadingPhotoIds}
               onAddPhoto={photosEnabled ? handleAddPhoto : undefined}
@@ -1192,7 +1270,7 @@ export default function TrackScreen() {
           )}
 
           {/* Frequent Items */}
-          <FrequentItems items={frequentItems} onItemClick={handleFrequentItemClick} hideMacros={macrosHidden} />
+          <FrequentItems items={frequentItems} onItemClick={handleFrequentItemClick} visibility={visibility} />
         </div>
       </div>
 

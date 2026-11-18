@@ -5,7 +5,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { Link, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { db } from '@/lib/database';
+import { db, type FoodItemInput } from '@/lib/database';
 import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { appToday } from '@/utils/date';
 import { toast } from '@/lib/toast';
@@ -18,7 +18,14 @@ import EmptyState from '@/components/ui/EmptyState';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import { Skeleton } from '@/components/ui/Skeleton';
 import type { FoodEntry, Meal, AnchorCookbook } from '@/types';
-import { useMacrosHidden } from '@/utils/use-macros-hidden';
+import { useMacroVisibility } from '@/utils/use-macro-visibility';
+import {
+  carbsFatLine,
+  ensureCarbsFat,
+  groupCarbsFatLine,
+  showsCarbsOrFat,
+  CARBS_FAT_MISSED_MESSAGE,
+} from '@/utils/macros';
 
 type BuilderState = null | { mode: 'new' } | { mode: 'edit'; meal: Meal };
 
@@ -30,7 +37,8 @@ const MealsGlyph = (
 
 export default function MealsScreen() {
   const { signOut } = useAuth();
-  const macrosHidden = useMacrosHidden();
+  // Which of the four numbers staff let this person see
+  const visibility = useMacroVisibility();
   const [meals, setMeals] = useState<Meal[]>([]);
   const [loading, setLoading] = useState(true);
   const [builder, setBuilder] = useState<BuilderState>(null);
@@ -136,23 +144,46 @@ export default function MealsScreen() {
     });
   };
 
+  /**
+   * What adding a saved or cookbook meal logs. For someone who sees carbs or
+   * fat, a meal saved before the app tracked them gets those two worked out
+   * first, in one request while the button reads "Adding". Calories and
+   * protein are never touched and the saved meal itself is left as it is.
+   * Everyone else, and any meal that already has them, makes no request.
+   */
+  const itemsToLog = async (meal: Meal): Promise<{ items: FoodItemInput[]; carbsFatMissed: boolean }> => {
+    const items: FoodItemInput[] = meal.items.map(({ name, calories, protein, carbs, fat, description }) => ({
+      name,
+      calories,
+      protein,
+      carbs,
+      fat,
+      description,
+    }));
+    if (!showsCarbsOrFat(visibility)) return { items, carbsFatMissed: false };
+
+    const { foods, complete } = await ensureCarbsFat(items);
+    return { items: foods, carbsFatMissed: !complete };
+  };
+
   const handleAdd = async (meal: Meal) => {
     if (addingMealId) return;
 
     setAddingMealId(meal.id);
     try {
       const date = appToday();
-      await db.food.addMany(
-        date,
-        meal.items.map(({ name, calories, protein, description }) => ({ name, calories, protein, description })),
-        meal.id
-      );
+      const { items, carbsFatMissed } = await itemsToLog(meal);
+      await db.food.addMany(date, items, meal.id);
 
       // Warm Track's cache so the entries are already there on tab switch
       const fresh = await db.food.getByDate(date);
       setCached<FoodEntry[]>(CACHE_KEYS.entries(date), fresh);
 
-      toast.success(`${meal.name} added to today · ${meal.items.length} items`);
+      if (carbsFatMissed) {
+        toast.info(CARBS_FAT_MISSED_MESSAGE);
+      } else {
+        toast.success(`${meal.name} added to today · ${meal.items.length} items`);
+      }
       setAddedMealId(meal.id);
       setTimeout(() => {
         setAddedMealId((prev) => (prev === meal.id ? null : prev));
@@ -185,8 +216,9 @@ export default function MealsScreen() {
   };
 
   /**
-   * One-tap add from inside a cookbook: pure insert of the preset baked at
-   * publish time (is_anchor meal matched by cookbook + recipe position).
+   * One-tap add from inside a cookbook: inserts the preset baked at publish
+   * time (is_anchor meal matched by cookbook + recipe position); see
+   * itemsToLog for the one case that asks the AI first.
    * Throws on failure so CookbookView doesn't flip the button to "Added".
    */
   const handleAddFromCookbook = async (cookbook: AnchorCookbook, index: number) => {
@@ -209,17 +241,18 @@ export default function MealsScreen() {
 
     try {
       const date = appToday();
-      await db.food.addMany(
-        date,
-        anchorMeal.items.map(({ name, calories, protein, description }) => ({ name, calories, protein, description })),
-        anchorMeal.id
-      );
+      const { items, carbsFatMissed } = await itemsToLog(anchorMeal);
+      await db.food.addMany(date, items, anchorMeal.id);
 
       // Warm Track's cache so the entries are already there on tab switch
       const fresh = await db.food.getByDate(date);
       setCached<FoodEntry[]>(CACHE_KEYS.entries(date), fresh);
 
-      toast.success(`${anchorMeal.name} added to today · ${anchorMeal.items.length} items`);
+      if (carbsFatMissed) {
+        toast.info(CARBS_FAT_MISSED_MESSAGE);
+      } else {
+        toast.success(`${anchorMeal.name} added to today · ${anchorMeal.items.length} items`);
+      }
     } catch (err) {
       console.error('Error adding anchor meal:', err);
       toast.error('Could not add meal. Please try again.');
@@ -394,6 +427,16 @@ export default function MealsScreen() {
               const totalCalories = meal.items.reduce((sum, item) => sum + item.calories, 0);
               const totalProtein = Math.round(meal.items.reduce((sum, item) => sum + item.protein, 0) * 10) / 10;
               const isExpanded = expandedIds.has(meal.id);
+              const summary = [
+                `${meal.items.length} items`,
+                visibility.calories ? `${totalCalories} cal` : null,
+                visibility.protein ? `${totalProtein}g pro` : null,
+              ]
+                .filter(Boolean)
+                .join(' · ');
+              // Only when every item has the numbers; a partial total would
+              // read as the whole meal
+              const mealCarbsFat = groupCarbsFatLine(meal.items, visibility);
 
               return (
                 <Card key={meal.id} className="animate-fade-in overflow-hidden">
@@ -406,9 +449,10 @@ export default function MealsScreen() {
                   >
                     <div className="min-w-0 flex-1">
                       <div className="text-sm font-semibold tracking-tight text-ink break-words">{meal.name}</div>
-                      <div className="text-xs text-ink-muted tabular-nums mt-0.5">
-                        {meal.items.length} items{!macrosHidden && ` · ${totalCalories} cal · ${totalProtein}g pro`}
-                      </div>
+                      <div className="text-xs text-ink-muted tabular-nums mt-0.5">{summary}</div>
+                      {mealCarbsFat && (
+                        <div className="text-xs text-ink-muted tabular-nums mt-0.5">{mealCarbsFat}</div>
+                      )}
                     </div>
                     <svg
                       className={`w-4 h-4 text-ink-muted flex-shrink-0 transition-transform duration-150 ease-spring ${isExpanded ? 'rotate-180' : ''}`}
@@ -423,16 +467,30 @@ export default function MealsScreen() {
                   {/* Item list */}
                   {isExpanded && (
                     <div className="border-t border-line/60 divide-y divide-line/60 animate-fade-in">
-                      {meal.items.map((item) => (
-                        <div key={item.id} className="flex items-baseline justify-between gap-3 px-4 py-2.5">
-                          <span className="font-medium text-ink text-sm min-w-0 flex-1 break-words">{item.name}</span>
-                          {!macrosHidden && (
-                            <span className="text-xs text-ink-muted tabular-nums whitespace-nowrap">
-                              {item.calories}c · {item.protein}p
-                            </span>
-                          )}
-                        </div>
-                      ))}
+                      {meal.items.map((item) => {
+                        const itemNumbers = [
+                          visibility.calories ? `${item.calories}c` : null,
+                          visibility.protein ? `${item.protein}p` : null,
+                        ]
+                          .filter(Boolean)
+                          .join(' · ');
+                        const itemCarbsFat = carbsFatLine(item, visibility);
+                        return (
+                          <div key={item.id} className="flex items-baseline justify-between gap-3 px-4 py-2.5">
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium text-ink text-sm break-words">{item.name}</div>
+                              {itemCarbsFat && (
+                                <div className="mt-0.5 text-xs text-ink-muted tabular-nums">{itemCarbsFat}</div>
+                              )}
+                            </div>
+                            {itemNumbers && (
+                              <span className="text-xs text-ink-muted tabular-nums whitespace-nowrap">
+                                {itemNumbers}
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 

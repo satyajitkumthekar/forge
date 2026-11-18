@@ -91,7 +91,8 @@ export const api = {
    * Calls Supabase Edge Function which calls OpenAI
    * @param description - Text description of food
    * @param image - Base64 encoded image (optional)
-   * @returns Nutrition data (name, calories, protein)
+   * @returns Nutrition data (name, calories, protein, and carbs and fat in
+   *   grams; null when the AI gave nothing usable for one of those two)
    */
   analyzeFood: async (
     description: string,
@@ -100,10 +101,37 @@ export const api = {
     name: string;
     calories: number;
     protein: number;
+    carbs?: number | null;
+    fat?: number | null;
   }> => {
     return invokeFunction('analyze-food', {
       description,
       image,
+    });
+  },
+
+  /**
+   * Carbs and fat for foods whose calories and protein are already known
+   * (shortcuts copying a food logged before carbs and fat were tracked).
+   * Same Edge Function and daily limit as analyzeFood; calories and protein
+   * are never re-estimated.
+   * @param items - The foods, each with its name, calories and protein
+   * @returns One { carbs, fat } per food, in the order sent; null where the
+   *   AI gave nothing usable
+   */
+  estimateCarbsFat: async (
+    items: Array<{
+      name: string;
+      description?: string | null;
+      calories: number;
+      protein: number;
+    }>
+  ): Promise<{
+    items: Array<{ carbs: number | null; fat: number | null }>;
+  }> => {
+    return invokeFunction('analyze-food', {
+      mode: 'carbs_fat',
+      items,
     });
   },
 

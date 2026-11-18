@@ -12,8 +12,9 @@
 
 import React, { useState } from 'react';
 import { format } from 'date-fns';
-import type { AnchorCookbook } from '@/types';
-import { useMacrosHidden } from '@/utils/use-macros-hidden';
+import type { AnchorCookbook, MacroVisibility } from '@/types';
+import { useMacroVisibility } from '@/utils/use-macro-visibility';
+import { carbsFatLine } from '@/utils/macros';
 
 interface CookbookViewProps {
   cookbook: AnchorCookbook;
@@ -21,15 +22,32 @@ interface CookbookViewProps {
   mode: 'preview' | 'client';
   /** Client mode: perform the one-tap preset insert for recipe `index` */
   onAddMeal?: (index: number) => Promise<void>;
+  /** Preview mode: the client's own switches, so the coach sees carbs and
+   *  fat only for a client who is shown them */
+  clientVisibility?: MacroVisibility;
 }
+
+const joinParts = (parts: Array<string | null | false>): string => parts.filter(Boolean).join(' · ');
 
 const microLabel = 'text-[11px] font-semibold uppercase tracking-wider text-ink-muted';
 
-export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookViewProps) {
+export default function CookbookView({ cookbook, mode, onAddMeal, clientVisibility }: CookbookViewProps) {
   const c = cookbook.content;
-  // The coach can hide numbers from a client; their own preview always shows them
-  const macrosHiddenForUser = useMacrosHidden();
-  const showMacros = mode === 'preview' || !macrosHiddenForUser;
+  // A client sees the numbers staff switched on for them. The coach's own
+  // preview always shows calories and protein; carbs and fat follow the
+  // client's switches. Cookbooks converted before carbs and fat were
+  // tracked simply have none to show.
+  const ownVisibility = useMacroVisibility();
+  const visibility: MacroVisibility =
+    mode === 'preview'
+      ? {
+          calories: true,
+          protein: true,
+          carbs: clientVisibility?.carbs === true,
+          fat: clientVisibility?.fat === true,
+        }
+      : ownVisibility;
+  const showsCalPro = visibility.calories || visibility.protein;
   const [added, setAdded] = useState<Set<number>>(new Set());
   const [adding, setAdding] = useState<number | null>(null);
 
@@ -81,9 +99,9 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
                 className="flex items-baseline justify-between gap-4 py-2.5 border-b border-line"
               >
                 <span className="text-sm text-ink min-w-0 flex-1">{row.label}</span>
-                {showMacros && (
+                {showsCalPro && (
                   <span className="text-sm text-ink-soft tabular-nums shrink-0">
-                    ~{row.protein}g · {row.calories} kcal
+                    {joinParts([visibility.protein && `~${row.protein}g`, visibility.calories && `${row.calories} kcal`])}
                   </span>
                 )}
               </div>
@@ -96,7 +114,9 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
       )}
 
       {/* Recipes */}
-      {c.meals.map((meal, i) => (
+      {c.meals.map((meal, i) => {
+        const mealCarbsFat = carbsFatLine(meal, visibility);
+        return (
         <section key={i}>
           <hr className="my-10 border-line" />
 
@@ -121,16 +141,27 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
                 {/* Per-ingredient macros shown to everyone: these exact
                     numbers are what a one-tap add logs, so the document
                     should be honest about them */}
-                {meal.ingredients.map((ing, j) => (
-                  <li key={j} className="flex items-baseline justify-between gap-3 text-sm text-ink">
-                    <span className="min-w-0 flex-1">· {ing.text}</span>
-                    {showMacros && (
-                      <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
-                        {ing.calories} cal · {Number(ing.protein).toFixed(0)}g
+                {meal.ingredients.map((ing, j) => {
+                  const ingCarbsFat = carbsFatLine(ing, visibility);
+                  return (
+                    <li key={j} className="flex items-baseline justify-between gap-3 text-sm text-ink">
+                      <span className="min-w-0 flex-1">
+                        · {ing.text}
+                        {ingCarbsFat && (
+                          <span className="block pl-3 text-xs text-ink-muted tabular-nums">{ingCarbsFat}</span>
+                        )}
                       </span>
-                    )}
-                  </li>
-                ))}
+                      {showsCalPro && (
+                        <span className="text-[11px] text-ink-faint tabular-nums shrink-0">
+                          {joinParts([
+                            visibility.calories && `${ing.calories} cal`,
+                            visibility.protein && `${Number(ing.protein).toFixed(0)}g`,
+                          ])}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -161,9 +192,17 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
             </blockquote>
           ) : null}
 
-          {showMacros && (
+          {showsCalPro && (
             <p className="mt-6 text-sm font-medium text-ink tabular-nums">
-              ~{meal.calories} kcal · ~{Number(meal.protein).toFixed(0)}g protein
+              {joinParts([
+                visibility.calories && `~${meal.calories} kcal`,
+                visibility.protein && `~${Number(meal.protein).toFixed(0)}g protein`,
+              ])}
+            </p>
+          )}
+          {mealCarbsFat && (
+            <p className={`${showsCalPro ? 'mt-0.5' : 'mt-6'} text-xs text-ink-muted tabular-nums`}>
+              {mealCarbsFat}
             </p>
           )}
 
@@ -199,7 +238,8 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
             </button>
           )}
         </section>
-      ))}
+        );
+      })}
 
       {/* Cheat sheet — derived from the recipes */}
       {c.meals.length > 0 && (
@@ -209,18 +249,21 @@ export default function CookbookView({ cookbook, mode, onAddMeal }: CookbookView
           <div className="mt-3">
             <div className="flex items-baseline justify-between gap-4 pb-2 border-b border-line-strong">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted">Meal</span>
-              {showMacros && (
+              {showsCalPro && (
                 <span className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted shrink-0">
-                  kcal · protein
+                  {joinParts([visibility.calories && 'kcal', visibility.protein && 'protein'])}
                 </span>
               )}
             </div>
             {c.meals.map((meal, i) => (
               <div key={i} className="flex items-baseline justify-between gap-4 py-2.5 border-b border-line">
                 <span className="text-sm text-ink min-w-0 flex-1">{meal.name}</span>
-                {showMacros && (
+                {showsCalPro && (
                   <span className="text-sm text-ink-soft tabular-nums shrink-0">
-                    ~{meal.calories} · ~{Number(meal.protein).toFixed(0)}g
+                    {joinParts([
+                      visibility.calories && `~${meal.calories}`,
+                      visibility.protein && `~${Number(meal.protein).toFixed(0)}g`,
+                    ])}
                   </span>
                 )}
               </div>

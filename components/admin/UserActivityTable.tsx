@@ -6,9 +6,10 @@
  */
 
 import React from 'react';
-import type { UserMetric } from '@/types';
+import type { MacroKey, UserMetric } from '@/types';
 import Button from '@/components/ui/Button';
 import { formatDateTime, getTierColor } from '@/components/admin/helpers';
+import { MACRO_KEYS, MACRO_LABELS, visibilityFromFlags } from '@/utils/macros';
 
 interface UserActivityTableProps {
   users: UserMetric[]; // current page of filtered+sorted users
@@ -28,7 +29,8 @@ interface UserActivityTableProps {
   updatingTier: string | null;
   updatingClient: string | null;
   updatingReflections: string | null;
-  updatingMacrosHidden: string | null;
+  /** Switches being saved right now, as `${userId}:${macro}` */
+  updatingMacroVisibility: Set<string>;
   updatingMealPhotos: string | null;
   updatingAccess: string | null;
   updatingCoach: string | null;
@@ -36,7 +38,8 @@ interface UserActivityTableProps {
   onTierChange: (userId: string, newTier: 'basic' | 'pro' | 'admin' | 'coach') => void;
   onClientToggle: (userId: string, currentValue: boolean) => void;
   onReflectionsToggle: (userId: string, currentValue: boolean) => void;
-  onMacrosHiddenToggle: (userId: string, currentValue: boolean) => void;
+  /** Flip one of the four numbers (calories, protein, carbs, fat) for a client */
+  onMacroVisibilityToggle: (user: UserMetric, macro: MacroKey) => void;
   onMealPhotosToggle: (userId: string, currentValue: boolean) => void;
   onAccessToggle: (userId: string, currentValue: boolean) => void;
   onCoachAssign: (userId: string, coachId: string | null) => void;
@@ -66,7 +69,7 @@ export default function UserActivityTable({
   updatingTier,
   updatingClient,
   updatingReflections,
-  updatingMacrosHidden,
+  updatingMacroVisibility,
   updatingMealPhotos,
   updatingAccess,
   updatingCoach,
@@ -74,7 +77,7 @@ export default function UserActivityTable({
   onTierChange,
   onClientToggle,
   onReflectionsToggle,
-  onMacrosHiddenToggle,
+  onMacroVisibilityToggle,
   onMealPhotosToggle,
   onAccessToggle,
   onCoachAssign,
@@ -131,7 +134,7 @@ export default function UserActivityTable({
                   {isAdminViewer && <th className={headerCellClass}>Tier</th>}
                   {isAdminViewer && <th className={headerCellClass}>Client</th>}
                   <th className={headerCellClass}>Practice</th>
-                  <th className={headerCellClass}>Cal &amp; Pro</th>
+                  <th className={headerCellClass}>Shown to client</th>
                   <th className={headerCellClass}>Photos</th>
                   {isAdminViewer && <th className={headerCellClass}>Access</th>}
                   {isAdminViewer && <th className={headerCellClass}>Coach</th>}
@@ -209,19 +212,32 @@ export default function UserActivityTable({
                       </button>
                     </td>
                     <td className="px-4 py-3">
-                      {/* Hide calorie & protein numbers from the client's app; staff still see everything */}
-                      <button
-                        onClick={() => onMacrosHiddenToggle(user.user_id, user.macros_hidden === true)}
-                        disabled={updatingMacrosHidden === user.user_id}
-                        title={user.macros_hidden ? 'Hidden from client. Tap to reveal.' : 'Visible to client. Tap to hide.'}
-                        className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${
-                          user.macros_hidden
-                            ? 'bg-ink text-white border border-ink hover:bg-ink-soft'
-                            : 'bg-paper-inset text-ink-muted border border-line hover:bg-paper-deep'
-                        } ${updatingMacrosHidden === user.user_id ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
-                      >
-                        {updatingMacrosHidden === user.user_id ? '...' : user.macros_hidden ? 'HIDDEN' : 'SHOWN'}
-                      </button>
+                      {/* Which of the four numbers this client sees in their app.
+                          Green = shown, grey = hidden. Each flips on its own,
+                          straight away. */}
+                      <div className="flex items-center gap-1">
+                        {MACRO_KEYS.map((macro) => {
+                          const shown = visibilityFromFlags(user)[macro];
+                          const saving = updatingMacroVisibility.has(`${user.user_id}:${macro}`);
+                          const { short, name, plural } = MACRO_LABELS[macro];
+                          return (
+                            <button
+                              key={macro}
+                              onClick={() => onMacroVisibilityToggle(user, macro)}
+                              disabled={saving}
+                              aria-pressed={shown}
+                              title={`${name} ${plural ? 'are' : 'is'} ${shown ? 'shown to' : 'hidden from'} this client. Tap to ${shown ? 'hide' : 'show'}.`}
+                              className={`px-2.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition-all ${
+                                shown
+                                  ? 'bg-accent-100 text-accent-700 border border-accent-100 hover:bg-accent-100'
+                                  : 'bg-paper-inset text-ink-muted border border-line hover:bg-paper-deep'
+                              } ${saving ? 'cursor-wait' : 'cursor-pointer'}`}
+                            >
+                              {short}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       {/* Meal photos: ON lets this client add a photo to each meal for staff to see */}

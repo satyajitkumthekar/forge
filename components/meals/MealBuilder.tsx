@@ -10,7 +10,8 @@ import { api } from '@/lib/api';
 import { db, type FoodItemInput } from '@/lib/database';
 import { toast } from '@/lib/toast';
 import { useCountUp } from '@/utils/use-count-up';
-import { useMacrosHidden } from '@/utils/use-macros-hidden';
+import { useMacroVisibility } from '@/utils/use-macro-visibility';
+import { carbsFatLine, cleanGrams, groupCarbsFatLine } from '@/utils/macros';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import Card from '@/components/ui/Card';
@@ -41,14 +42,18 @@ const fileToBase64 = (file: File): Promise<string> => {
 };
 
 export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProps) {
-  const macrosHidden = useMacrosHidden();
+  // Which of the four numbers staff let this person see
+  const visibility = useMacroVisibility();
+  const showsCalPro = visibility.calories || visibility.protein;
   const [name, setName] = useState(meal?.name ?? '');
   const [items, setItems] = useState<DraftItem[]>(() =>
-    (meal?.items ?? []).map(({ name: itemName, calories, protein, description }) => ({
+    (meal?.items ?? []).map(({ name: itemName, calories, protein, carbs, fat, description }) => ({
       uid: makeUid(),
       name: itemName,
       calories,
       protein,
+      carbs,
+      fat,
       description,
     }))
   );
@@ -79,6 +84,9 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
   const totalProtein = Math.round(items.reduce((sum, item) => sum + item.protein, 0) * 10) / 10;
   const shownCalories = useCountUp(totalCalories);
   const shownProtein = useCountUp(totalProtein, { decimals: 1 });
+  // Only when every item has the numbers; a partial total would read as the
+  // whole meal
+  const totalCarbsFat = groupCarbsFatLine(items, visibility);
 
   const canSave = name.trim().length > 0 && items.length >= 1;
 
@@ -154,6 +162,10 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
           name: nutritionData.name,
           calories: nutritionData.calories,
           protein: nutritionData.protein,
+          // Kept for everyone, shown only to those switched on. Unknown
+          // stays null, never zero.
+          carbs: cleanGrams(nutritionData.carbs),
+          fat: cleanGrams(nutritionData.fat),
           description: description || nutritionData.name,
         },
       ]);
@@ -182,10 +194,12 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
 
     setSaving(true);
     try {
-      const payload: FoodItemInput[] = items.map(({ name: itemName, calories, protein, description: itemDescription }) => ({
+      const payload: FoodItemInput[] = items.map(({ name: itemName, calories, protein, carbs, fat, description: itemDescription }) => ({
         name: itemName,
         calories,
         protein,
+        carbs,
+        fat,
         description: itemDescription,
       }));
 
@@ -234,14 +248,32 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
             disabled={saving}
           />
 
-          {/* Running totals strip */}
-          {items.length >= 1 && !macrosHidden && (
-            <div className="flex items-baseline gap-1.5 animate-fade-in">
-              <span className="text-xs text-ink-muted">Total ·</span>
-              <span className="text-lg font-semibold tracking-tight tabular-nums text-ink">{shownCalories}</span>
-              <span className="text-xs text-ink-muted">cal ·</span>
-              <span className="text-lg font-semibold tracking-tight tabular-nums text-ink">{shownProtein}g</span>
-              <span className="text-xs text-ink-muted">pro</span>
+          {/* Running totals strip: one number per visible switch, then the
+              small carbs and fat line beneath */}
+          {items.length >= 1 && (showsCalPro || totalCarbsFat) && (
+            <div className="animate-fade-in">
+              {showsCalPro && (
+                <div className="flex items-baseline gap-1.5">
+                  <span className="text-xs text-ink-muted">Total ·</span>
+                  {visibility.calories && (
+                    <>
+                      <span className="text-lg font-semibold tracking-tight tabular-nums text-ink">{shownCalories}</span>
+                      <span className="text-xs text-ink-muted">{visibility.protein ? 'cal ·' : 'cal'}</span>
+                    </>
+                  )}
+                  {visibility.protein && (
+                    <>
+                      <span className="text-lg font-semibold tracking-tight tabular-nums text-ink">{shownProtein}g</span>
+                      <span className="text-xs text-ink-muted">pro</span>
+                    </>
+                  )}
+                </div>
+              )}
+              {totalCarbsFat && (
+                <div className="mt-0.5 text-xs text-ink-muted tabular-nums">
+                  {showsCalPro ? totalCarbsFat : `Total · ${totalCarbsFat}`}
+                </div>
+              )}
             </div>
           )}
 
@@ -264,30 +296,35 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
                 <thead>
                   <tr className="border-b border-line bg-paper-inset/70">
                     <th className="text-left py-2.5 px-3 text-xs font-semibold text-ink-muted uppercase tracking-wider">Food</th>
-                    {!macrosHidden && (
-                      <>
-                        <th className="text-center py-2.5 px-2 text-xs font-semibold text-ink-muted uppercase tracking-wider whitespace-nowrap">Cal</th>
-                        <th className="text-center py-2.5 px-2 text-xs font-semibold text-ink-muted uppercase tracking-wider whitespace-nowrap">Pro</th>
-                      </>
+                    {visibility.calories && (
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-ink-muted uppercase tracking-wider whitespace-nowrap">Cal</th>
+                    )}
+                    {visibility.protein && (
+                      <th className="text-center py-2.5 px-2 text-xs font-semibold text-ink-muted uppercase tracking-wider whitespace-nowrap">Pro</th>
                     )}
                     <th className="w-14"></th>
                   </tr>
                 </thead>
                 <tbody>
-                  {items.map((item) => (
+                  {items.map((item) => {
+                    const itemCarbsFat = carbsFatLine(item, visibility);
+                    return (
                     <tr key={item.uid} className="border-b border-line/60 last:border-b-0 hover:bg-paper-inset/50 transition-colors animate-entry-in">
                       <td className="py-3 px-3">
                         <div className="font-medium text-ink text-sm">{item.name}</div>
+                        {itemCarbsFat && (
+                          <div className="mt-0.5 text-xs text-ink-muted tabular-nums">{itemCarbsFat}</div>
+                        )}
                       </td>
-                      {!macrosHidden && (
-                        <>
-                          <td className="py-3 px-2 text-center">
-                            <div className="text-xs font-semibold text-ink tabular-nums">{item.calories}</div>
-                          </td>
-                          <td className="py-3 px-2 text-center">
-                            <div className="text-xs font-semibold text-ink tabular-nums">{item.protein}g</div>
-                          </td>
-                        </>
+                      {visibility.calories && (
+                        <td className="py-3 px-2 text-center">
+                          <div className="text-xs font-semibold text-ink tabular-nums">{item.calories}</div>
+                        </td>
+                      )}
+                      {visibility.protein && (
+                        <td className="py-3 px-2 text-center">
+                          <div className="text-xs font-semibold text-ink tabular-nums">{item.protein}g</div>
+                        </td>
                       )}
                       <td className="py-1.5 px-2 text-right">
                         <div className="flex items-center justify-end">
@@ -304,7 +341,8 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
                         </div>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </Card>

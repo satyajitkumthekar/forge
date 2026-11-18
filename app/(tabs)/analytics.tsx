@@ -29,7 +29,8 @@ import UserChips from '@/components/admin/UserChips';
 import CoachTable from '@/components/admin/CoachTable';
 import CookbookPanel from '@/components/admin/CookbookPanel';
 import ReflectionsPanel from '@/components/admin/ReflectionsPanel';
-import type { AnalyticsSummary, UserMetric, CoachAnalyticsRow, FoodEntry, MealCoachingAnalysis, MealPhoto, WeekReflectionMarker, AccessPass } from '@/types';
+import { DEFAULT_MACRO_VISIBILITY, MACRO_LABELS, visibilityFromFlags } from '@/utils/macros';
+import type { AnalyticsSummary, UserMetric, CoachAnalyticsRow, FoodEntry, MacroKey, MealCoachingAnalysis, MealPhoto, WeekReflectionMarker, AccessPass } from '@/types';
 
 // Cache TTL: 5 minutes (analytics don't need to be real-time)
 const ANALYTICS_CACHE_TTL = 5 * 60 * 1000;
@@ -47,7 +48,8 @@ export default function AnalyticsScreen() {
   const [updatingTier, setUpdatingTier] = useState<string | null>(null);
   const [updatingClient, setUpdatingClient] = useState<string | null>(null);
   const [updatingReflections, setUpdatingReflections] = useState<string | null>(null);
-  const [updatingMacrosHidden, setUpdatingMacrosHidden] = useState<string | null>(null);
+  // Number switches being saved right now, as `${userId}:${macro}`
+  const [updatingMacroVisibility, setUpdatingMacroVisibility] = useState<Set<string>>(new Set());
   const [updatingMealPhotos, setUpdatingMealPhotos] = useState<string | null>(null);
   const [updatingMacros, setUpdatingMacros] = useState<string | null>(null);
   const [updatingReminder, setUpdatingReminder] = useState<string | null>(null);
@@ -360,18 +362,53 @@ export default function AnalyticsScreen() {
     }
   };
 
-  const handleMacrosHiddenToggle = async (userId: string, currentValue: boolean) => {
-    setUpdatingMacrosHidden(userId);
-    try {
-      await db.analytics.setMacrosHidden(userId, !currentValue);
+  // Four switches per client: calories, protein, carbs, fat. The button
+  // flips the moment it is tapped and goes back if the save fails. The
+  // cached copy is patched too, so nothing reloads and the table never
+  // blinks between two taps.
+  const handleMacroVisibilityToggle = async (user: UserMetric, macro: MacroKey) => {
+    const savingKey = `${user.user_id}:${macro}`;
+    const next = !visibilityFromFlags(user)[macro];
 
-      // Reload analytics and update cache
-      await loadAnalytics(true); // Force refresh to clear cache
+    const setSwitch = (visible: boolean) => {
+      const patch = (list: UserMetric[]) =>
+        list.map((row) => {
+          if (row.user_id !== user.user_id) return row;
+          const shown = { ...visibilityFromFlags(row), [macro]: visible };
+          return {
+            ...row,
+            show_calories: shown.calories,
+            show_protein: shown.protein,
+            show_carbs: shown.carbs,
+            show_fat: shown.fat,
+            macros_hidden: !(shown.calories && shown.protein),
+          };
+        });
+      setUserMetrics(patch);
+      const cached = getCached<{ users: UserMetric[] }>(CACHE_KEYS.analytics);
+      if (cached) {
+        setCached(CACHE_KEYS.analytics, { ...cached, users: patch(cached.users) }, ANALYTICS_CACHE_TTL);
+      }
+    };
+
+    setUpdatingMacroVisibility((prev) => new Set(prev).add(savingKey));
+    setSwitch(next);
+    try {
+      await db.analytics.setMacroVisibility(user.user_id, macro, next);
+
+      const { name, plural } = MACRO_LABELS[macro];
+      const who = user.full_name?.trim().split(/\s+/)[0] || 'this client';
+      toast.success(`${name} ${plural ? 'are' : 'is'} now ${next ? 'shown to' : 'hidden from'} ${who}.`);
     } catch (err) {
-      console.error('Error toggling macros visibility:', err);
+      console.error('Error updating macro visibility:', err);
+      setSwitch(!next);
       toast.error('Could not update. Please try again.');
     } finally {
-      setUpdatingMacrosHidden(null);
+      setUpdatingMacroVisibility((prev) => {
+        const remaining = new Set(prev);
+        remaining.delete(savingKey);
+        return remaining;
+      });
     }
   };
 
@@ -800,6 +837,13 @@ export default function AnalyticsScreen() {
     return dateStr === addDaysYMD(today, -1) ? 'in_progress' : 'missed';
   };
 
+  // A client's four number switches. Staff views show carbs and fat only
+  // for a client who is shown them.
+  const macroVisibilityFor = (userId: string) => {
+    const user = userMetrics.find(u => u.user_id === userId);
+    return user ? visibilityFromFlags(user) : DEFAULT_MACRO_VISIBILITY;
+  };
+
   // New signups (and booted users) awaiting an access grant
   const pendingUsers = userMetrics.filter(user => !user.access_granted);
 
@@ -927,6 +971,9 @@ export default function AnalyticsScreen() {
                     Tier API Call Limits (Daily)
                   </h3>
                   <div className="space-y-3">
+                    {/* These mirror update_daily_limit_on_tier_change in the database,
+                        which is what actually sets each person's limits. Pro is the
+                        plan everyone starts on; Basic remains for staff to pick by hand. */}
                     {/* Basic Tier */}
                     <div className="flex items-center justify-between p-3 bg-paper-inset border border-line rounded-ctrl">
                       <span className={`px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide rounded-full border ${getTierColor('basic')}`}>
@@ -949,10 +996,10 @@ export default function AnalyticsScreen() {
                       </span>
                       <div className="flex gap-4 text-xs">
                         <span className="text-ink-muted">
-                          Food: <span className="font-semibold text-ink">100</span>
+                          Food: <span className="font-semibold text-ink">500</span>
                         </span>
                         <span className="text-ink-muted">
-                          Coach: <span className="font-semibold text-ink">50</span>
+                          Coach: <span className="font-semibold text-ink">25</span>
                         </span>
                       </div>
                     </div>
@@ -967,7 +1014,7 @@ export default function AnalyticsScreen() {
                           Food: <span className="font-semibold text-ink">Unlimited</span>
                         </span>
                         <span className="text-ink-muted">
-                          Coach: <span className="font-semibold text-ink">Unlimited</span>
+                          Coach: <span className="font-semibold text-ink">100</span>
                         </span>
                       </div>
                     </div>
@@ -1009,7 +1056,7 @@ export default function AnalyticsScreen() {
                 updatingTier={updatingTier}
                 updatingClient={updatingClient}
                 updatingReflections={updatingReflections}
-                updatingMacrosHidden={updatingMacrosHidden}
+                updatingMacroVisibility={updatingMacroVisibility}
                 updatingMealPhotos={updatingMealPhotos}
                 updatingAccess={updatingAccess}
                 updatingCoach={updatingCoach}
@@ -1017,7 +1064,7 @@ export default function AnalyticsScreen() {
                 onTierChange={handleTierChange}
                 onClientToggle={handleClientToggle}
                 onReflectionsToggle={handleReflectionsToggle}
-                onMacrosHiddenToggle={handleMacrosHiddenToggle}
+                onMacroVisibilityToggle={handleMacroVisibilityToggle}
                 onMealPhotosToggle={handleMealPhotosToggle}
                 onAccessToggle={handleAccessToggle}
                 onCoachAssign={handleCoachAssign}
@@ -1085,6 +1132,7 @@ export default function AnalyticsScreen() {
               onUpdateViewMode={updateViewMode}
               onRefreshCoaching={handleRefreshCoaching}
               getTimezone={(userId) => userMetrics.find(u => u.user_id === userId)?.timezone}
+              getMacroVisibility={macroVisibilityFor}
               onOpenCookbooks={(userId, email) => setCookbookUser({ id: userId, email })}
               getReflectionMarker={reflectionMarkerFor}
               onViewReflection={(userId, email, dateStr) =>
@@ -1117,7 +1165,7 @@ export default function AnalyticsScreen() {
               updatingTier={updatingTier}
               updatingClient={updatingClient}
               updatingReflections={updatingReflections}
-              updatingMacrosHidden={updatingMacrosHidden}
+              updatingMacroVisibility={updatingMacroVisibility}
               updatingMealPhotos={updatingMealPhotos}
               updatingAccess={updatingAccess}
               updatingCoach={updatingCoach}
@@ -1125,7 +1173,7 @@ export default function AnalyticsScreen() {
               onTierChange={handleTierChange}
               onClientToggle={handleClientToggle}
               onReflectionsToggle={handleReflectionsToggle}
-              onMacrosHiddenToggle={handleMacrosHiddenToggle}
+              onMacroVisibilityToggle={handleMacroVisibilityToggle}
               onMealPhotosToggle={handleMealPhotosToggle}
               onAccessToggle={handleAccessToggle}
               onCoachAssign={handleCoachAssign}
@@ -1141,6 +1189,7 @@ export default function AnalyticsScreen() {
           userId={cookbookUser.id}
           email={cookbookUser.email}
           fullName={userMetrics.find(u => u.user_id === cookbookUser.id)?.full_name ?? null}
+          clientVisibility={macroVisibilityFor(cookbookUser.id)}
           onClose={() => setCookbookUser(null)}
         />
       )}

@@ -1,18 +1,47 @@
 /**
  * Totals Component - Daily Macro Progress
- * Displays calories and protein progress with SVG donut charts
+ * Displays calories and protein progress with SVG donut charts. Each ring
+ * shows only when staff let this person see that number.
+ *
+ * CarbsFatTotals is the day's optional carbs and fat: one quiet line that
+ * sits under the rings, with no ring, target or status colour of its own.
  */
 
 import React from 'react';
 import { tokens } from '@/lib/design-tokens';
 import { useCountUp } from '@/utils/use-count-up';
-import type { FoodEntry } from '@/types';
+import { carbsFatTotalLine, summarizeCarbsFat, DEFAULT_MACRO_VISIBILITY } from '@/utils/macros';
+import type { FoodEntry, MacroVisibility } from '@/types';
 
 interface TotalsProps {
   entries: FoodEntry[];
   targetCalories: number;
   targetProtein: number;
   maintenanceCalories?: number;
+  /** Which rings to draw; both when omitted */
+  visibility?: MacroVisibility;
+}
+
+/**
+ * "Carbs 182g · Fat 61g" for the day. Renders nothing when the person is
+ * not shown carbs or fat, or when none of the day's food has the numbers.
+ * A day where only some food has them says so, in fainter words, so a
+ * partial total never passes for the whole day.
+ */
+export function CarbsFatTotals({ entries, visibility }: { entries: FoodEntry[]; visibility: MacroVisibility }) {
+  const summary = summarizeCarbsFat(entries, visibility);
+  // Display-only animated values (hooks run every render, line or not)
+  const shownCarbs = useCountUp(Math.round(summary?.carbs ?? 0));
+  const shownFat = useCountUp(Math.round(summary?.fat ?? 0));
+
+  if (!summary) return null;
+
+  return (
+    <div className="mt-2 text-center text-xs text-ink-muted tabular-nums animate-fade-in">
+      {carbsFatTotalLine({ carbs: shownCarbs, fat: shownFat }, visibility)}
+      {summary.note && <span className="text-ink-faint">, {summary.note}</span>}
+    </div>
+  );
 }
 
 const STATUS = {
@@ -23,7 +52,13 @@ const STATUS = {
   danger: tokens.colors.danger.DEFAULT,
 };
 
-export default function Totals({ entries, targetCalories, targetProtein, maintenanceCalories }: TotalsProps) {
+export default function Totals({
+  entries,
+  targetCalories,
+  targetProtein,
+  maintenanceCalories,
+  visibility = DEFAULT_MACRO_VISIBILITY,
+}: TotalsProps) {
   // Calculate totals
   const totals = entries.reduce(
     (acc, entry) => ({
@@ -105,6 +140,7 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
   return (
     <div className="flex items-center justify-center gap-6">
       {/* Calories Donut */}
+      {visibility.calories && (
       <div className="flex items-center gap-2">
         <div className="relative" style={{ width: size, height: size }}>
           <svg width={size} height={size} className="transform -rotate-90">
@@ -141,8 +177,10 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
           <div className="text-xs text-ink-muted tabular-nums">of {targetCalories}</div>
         </div>
       </div>
+      )}
 
       {/* Protein Donut */}
+      {visibility.protein && (
       <div className="flex items-center gap-2">
         <div className="relative" style={{ width: size, height: size }}>
           <svg width={size} height={size} className="transform -rotate-90">
@@ -179,6 +217,7 @@ export default function Totals({ entries, targetCalories, targetProtein, mainten
           <div className="text-xs text-ink-muted tabular-nums">of {targetProtein}g</div>
         </div>
       </div>
+      )}
     </div>
   );
 }

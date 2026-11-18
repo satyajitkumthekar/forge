@@ -23,6 +23,8 @@ import type {
   ReflectionFailReason,
   WeekReflectionMarker,
   AccessPass,
+  MacroKey,
+  MacroVisibility,
 } from '../types';
 
 /**
@@ -48,6 +50,9 @@ export interface FoodItemInput {
   name: string;
   calories: number;
   protein: number;
+  /** Grams; null or absent = unknown, stored as NULL (never zero) */
+  carbs?: number | null;
+  fat?: number | null;
   description?: string | null;
 }
 
@@ -161,6 +166,8 @@ export const db = {
         name: item.name,
         calories: item.calories,
         protein: item.protein,
+        carbs: item.carbs ?? null,
+        fat: item.fat ?? null,
         description: item.description ?? null,
         meal_id: mealId ?? null,
         ...(group ? { meal_group_id: group.mealGroupId } : {}),
@@ -293,6 +300,8 @@ export const db = {
           name: item.name,
           calories: item.calories,
           protein: item.protein,
+          carbs: item.carbs ?? null,
+          fat: item.fat ?? null,
           description: item.description ?? null,
           position: index,
         })))
@@ -339,6 +348,8 @@ export const db = {
           name: item.name,
           calories: item.calories,
           protein: item.protein,
+          carbs: item.carbs ?? null,
+          fat: item.fat ?? null,
           description: item.description ?? null,
           position: index,
         })))
@@ -828,22 +839,29 @@ export const db = {
     },
 
     /**
-     * Whether staff have hidden calorie & protein numbers from this user.
-     * Throws on failure so callers keep the last known value instead of
-     * flashing numbers on a network blip.
+     * Which of the four numbers (calories, protein, carbs, fat) staff let
+     * this user see. Throws on failure so callers keep the last known value
+     * instead of flashing numbers on a network blip.
      */
-    getMacrosHidden: async (): Promise<boolean> => {
+    getMacroVisibility: async (): Promise<MacroVisibility> => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
       const { data, error } = await supabase
         .from('user_profiles')
-        .select('macros_hidden')
+        .select('show_calories, show_protein, show_carbs, show_fat')
         .eq('user_id', user.id)
         .single();
 
       if (error) throw error;
-      return data?.macros_hidden === true;
+      // Calories and protein show unless switched off; carbs and fat stay
+      // hidden unless switched on
+      return {
+        calories: data?.show_calories !== false,
+        protein: data?.show_protein !== false,
+        carbs: data?.show_carbs === true,
+        fat: data?.show_fat === true,
+      };
     },
 
     /**
@@ -1090,13 +1108,15 @@ export const db = {
     },
 
     /**
-     * Hide or reveal calorie & protein numbers in a client's app (staff only)
+     * Show or hide one of the four numbers (calories, protein, carbs, fat)
+     * in a client's app (staff only)
      */
-    setMacrosHidden: async (userId: string, hidden: boolean): Promise<void> => {
+    setMacroVisibility: async (userId: string, macro: MacroKey, visible: boolean): Promise<void> => {
       const { error } = await supabase
-        .rpc('admin_set_macros_hidden', {
+        .rpc('admin_set_macro_visibility', {
           target_user_id: userId,
-          new_hidden_value: hidden,
+          macro,
+          visible,
         });
 
       if (error) throw error;

@@ -27,9 +27,19 @@ interface WeeklyChartProps {
   targetCalories: number;
   targetProtein: number;
   maintenanceCalories: number;
+  /** Each chart shows only when that number is shown to this person; both by default */
+  showCalories?: boolean;
+  showProtein?: boolean;
 }
 
-export default function WeeklyChart({ dailyData, targetCalories, targetProtein, maintenanceCalories }: WeeklyChartProps) {
+export default function WeeklyChart({
+  dailyData,
+  targetCalories,
+  targetProtein,
+  maintenanceCalories,
+  showCalories = true,
+  showProtein = true,
+}: WeeklyChartProps) {
   // Hooks must run unconditionally (before any early return)
   const { width: windowWidth } = useWindowDimensions();
   const chartWidth = Math.min(windowWidth - 48, 800); // Account for padding
@@ -147,6 +157,7 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
   return (
     <View style={{ gap: 16 }}>
       {/* Calories Chart */}
+      {showCalories && (
       <View style={{ backgroundColor: C.paper, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 16 }}>
         <View style={{ marginBottom: 16 }}>
           <Text style={{ fontSize: 14, fontWeight: 'bold', color: C.ink, marginBottom: 6 }}>
@@ -206,9 +217,10 @@ export default function WeeklyChart({ dailyData, targetCalories, targetProtein, 
           </View>
         </View>
       </View>
+      )}
 
       {/* Protein Chart */}
-      {targetProtein > 0 && (
+      {showProtein && targetProtein > 0 && (
         <View style={{ backgroundColor: C.paper, borderRadius: 16, borderWidth: 1, borderColor: C.line, padding: 16 }}>
           <View style={{ marginBottom: 16 }}>
             <Text style={{ fontSize: 14, fontWeight: 'bold', color: C.ink, marginBottom: 6 }}>

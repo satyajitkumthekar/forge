@@ -23,7 +23,7 @@ import type {
   ReflectionPath,
   ReflectionVerdict,
 } from '@/types';
-import { readMacrosHidden } from '@/utils/use-macros-hidden';
+import { readMacroVisibility } from '@/utils/use-macro-visibility';
 
 export type StepKind = 'info' | 'choice' | 'text';
 
@@ -38,8 +38,10 @@ export interface ReflectionCtx {
   totalProtein: number;
   targetCalories: number;
   targetProtein: number;
-  /** Coach has hidden numbers from this client: prompts state direction only */
-  macrosHidden?: boolean;
+  /** A number the coach has hidden from this client is never quoted: the
+   *  prompt only says which way it went. Absent = shown. */
+  showCalories?: boolean;
+  showProtein?: boolean;
 }
 
 /** Structured columns a choice step can write (mirrors ReflectionProgressPatch) */
@@ -96,18 +98,18 @@ const failOpener = (ctx: ReflectionCtx): string => {
     ctx.goalType === 'cut'
       ? Math.round(ctx.targetCalories * 1.05)
       : Math.round(ctx.targetCalories * 0.95);
+  // Each clause quotes its numbers only when that number is shown
+  const calorieDirection = ctx.goalType === 'cut' ? 'calories ran over' : 'calories came in under';
   const calorieClause =
-    ctx.goalType === 'cut'
-      ? `calories ran over (${fmt(ctx.totalCalories)} against a ${fmt(calorieLimit)} ceiling)`
-      : `calories came in under (${fmt(ctx.totalCalories)} against a ${fmt(calorieLimit)} minimum)`;
-  const proteinClause = `protein came in under (${fmtProtein(ctx.totalProtein)} against your ${ctx.targetProtein}g target)`;
-
-  if (ctx.macrosHidden) {
-    const hiddenCalories = ctx.goalType === 'cut' ? 'calories ran over' : 'calories came in under';
-    if (ctx.verdict === 'fail_both') return `Yesterday didn't land. The ${hiddenCalories}, and protein came in under.`;
-    if (ctx.verdict === 'fail_calories') return `Yesterday didn't land. The ${hiddenCalories}.`;
-    return "Yesterday didn't land. The protein came in under.";
-  }
+    ctx.showCalories === false
+      ? calorieDirection
+      : ctx.goalType === 'cut'
+        ? `${calorieDirection} (${fmt(ctx.totalCalories)} against a ${fmt(calorieLimit)} ceiling)`
+        : `${calorieDirection} (${fmt(ctx.totalCalories)} against a ${fmt(calorieLimit)} minimum)`;
+  const proteinClause =
+    ctx.showProtein === false
+      ? 'protein came in under'
+      : `protein came in under (${fmtProtein(ctx.totalProtein)} against your ${ctx.targetProtein}g target)`;
 
   if (ctx.verdict === 'fail_both') {
     return `Yesterday didn't land. The ${calorieClause}, and ${proteinClause}.`;
@@ -124,7 +126,7 @@ export const FLOW: Record<string, Step> = {
     id: 'precheck',
     kind: 'choice',
     prompt: (ctx) =>
-      ctx.macrosHidden
+      ctx.showCalories === false
         ? 'Before we look at yesterday: the log seems light. Did you log everything you ate?'
         : `Before we look at yesterday: the log seems light (${fmt(ctx.totalCalories)} calories). Did you log everything you ate?`,
     saveColumn: 'logging_complete',
@@ -362,6 +364,7 @@ export function buildCtx(
   row: DailyReflection,
   local?: { path?: ReflectionPath | null; showedUp?: boolean | null }
 ): ReflectionCtx {
+  const visibility = readMacroVisibility();
   return {
     verdict: row.verdict,
     goalType: row.goal_type,
@@ -372,7 +375,8 @@ export function buildCtx(
     totalProtein: Number(row.total_protein),
     targetCalories: row.target_calories,
     targetProtein: row.target_protein,
-    macrosHidden: readMacrosHidden(),
+    showCalories: visibility.calories,
+    showProtein: visibility.protein,
   };
 }
 

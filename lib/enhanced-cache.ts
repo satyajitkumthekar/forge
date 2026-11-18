@@ -228,6 +228,9 @@ export const CACHE_KEYS = {
   meals: 'meals',
   cookbooks: 'cookbooks',
   reflection: 'active_reflection',
+  /** Older single hide flag. No longer written; read once as the fallback
+   *  for a device that has not cached the four switches yet. */
   macrosHidden: 'macros_hidden',
+  macroVisibility: 'macro_visibility',
   mealPhotosEnabled: 'meal_photos_enabled',
 };

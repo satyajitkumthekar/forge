@@ -169,11 +169,11 @@ Extended user data with tier, limits, and waitlist
 | id | UUID | gen_random_uuid() | Primary key |
 | user_id | UUID | - | FK to auth.users (UNIQUE) |
 | user_email | TEXT | NULL | Cached for analytics |
-| account_type | account_type | 'basic' | Tier enum |
+| account_type | account_type | 'pro' | Tier enum |
 | user_number | INTEGER | nextval() | Waitlist rank (UNIQUE) |
-| daily_api_limit | INTEGER | 50 | Food analysis calls/day |
+| daily_api_limit | INTEGER | 500 | Food analysis calls/day |
 | api_calls_used_today | INTEGER | 0 | Current usage |
-| daily_coach_limit | INTEGER | 10 | Coach calls/day |
+| daily_coach_limit | INTEGER | 25 | Coach calls/day |
 | coach_calls_used_today | INTEGER | 0 | Current usage |
 | limit_reset_at | TIMESTAMPTZ | NOW() + 1 day | Reset time |
 | food_thread_id | TEXT | NULL | OpenAI thread ID |
@@ -417,11 +417,11 @@ CREATE TABLE user_profiles (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID UNIQUE NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   user_email TEXT,
-  account_type account_type NOT NULL DEFAULT 'basic',
+  account_type account_type NOT NULL DEFAULT 'pro',
   user_number INTEGER UNIQUE,
-  daily_api_limit INTEGER NOT NULL DEFAULT 50,
+  daily_api_limit INTEGER NOT NULL DEFAULT 500,
   api_calls_used_today INTEGER NOT NULL DEFAULT 0,
-  daily_coach_limit INTEGER NOT NULL DEFAULT 10,
+  daily_coach_limit INTEGER NOT NULL DEFAULT 25,
   coach_calls_used_today INTEGER NOT NULL DEFAULT 0,
   limit_reset_at TIMESTAMPTZ NOT NULL DEFAULT (NOW() + INTERVAL '1 day'),
   food_thread_id TEXT,
@@ -667,7 +667,7 @@ CREATE OR REPLACE FUNCTION create_user_profile()
 RETURNS TRIGGER AS $$
 BEGIN
   INSERT INTO user_profiles (user_id, account_type, daily_api_limit, daily_coach_limit, user_email)
-  VALUES (NEW.id, 'basic', 50, 10, NEW.email)
+  VALUES (NEW.id, 'pro', 500, 25, NEW.email)
   ON CONFLICT (user_id) DO UPDATE SET user_email = NEW.email;
   RETURN NEW;
 END;
@@ -741,7 +741,7 @@ BEGIN
 
   IF NOT FOUND THEN
     INSERT INTO user_profiles (user_id, account_type, daily_api_limit)
-    VALUES (user_uuid, 'basic', 50)
+    VALUES (user_uuid, 'pro', 500)
     RETURNING * INTO profile_record;
   END IF;
 
@@ -774,7 +774,7 @@ BEGIN
 
   IF NOT FOUND THEN
     INSERT INTO user_profiles (user_id, account_type, daily_api_limit, daily_coach_limit)
-    VALUES (user_uuid, 'basic', 50, 10)
+    VALUES (user_uuid, 'pro', 500, 25)
     RETURNING * INTO profile_record;
   END IF;
 

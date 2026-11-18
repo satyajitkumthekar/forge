@@ -12,9 +12,13 @@ import { format } from 'date-fns';
 import WeeklyChart from '@/components/WeeklyChart';
 import { SkeletonStat } from '@/components/ui/Skeleton';
 import { useCountUp } from '@/utils/use-count-up';
+import { useMacroVisibility } from '@/utils/use-macro-visibility';
 import type { WeeklyStats, UserSettings } from '@/types';
 
 export default function DashboardScreen() {
+  // This page is off the tab bar but still opens by its address, so it obeys
+  // the same switches as everywhere else: a hidden number never shows here
+  const visibility = useMacroVisibility();
   const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(appToday()));
   const [stats, setStats] = useState<WeeklyStats | null>(null);
   const [settings, setSettings] = useState<UserSettings | null>(null);
@@ -261,12 +265,19 @@ export default function DashboardScreen() {
         </div>
 
         {/* Metrics area: skeletons during week change, nav above stays visible */}
-        {statsLoading ? (
+        {!visibility.calories && !visibility.protein ? (
+          <div className="rounded-card border border-line bg-paper-raised px-4 py-5 text-center animate-fade-in">
+            <div className="text-sm font-semibold tracking-tight text-ink">Your coach is looking after the numbers</div>
+            <p className="mt-1 text-xs text-ink-muted leading-relaxed">
+              Just keep logging what you eat. Your coach sees the details.
+            </p>
+          </div>
+        ) : statsLoading ? (
           <div className="grid grid-cols-2 gap-3">
-            <SkeletonStat />
-            <SkeletonStat />
-            <SkeletonStat />
-            <SkeletonStat />
+            {visibility.calories && <SkeletonStat />}
+            {visibility.protein && <SkeletonStat />}
+            {visibility.calories && <SkeletonStat />}
+            {visibility.calories && <SkeletonStat />}
           </div>
         ) : stats.daysLogged === 0 ? (
           <div className="bg-paper-raised rounded-card border border-line p-6 text-center">
@@ -283,19 +294,26 @@ export default function DashboardScreen() {
             {/* Key Metrics - Simplified to 4 */}
             <div className="grid grid-cols-2 gap-3 animate-fade-in">
               {/* Average Daily Calories */}
+              {visibility.calories && (
               <div className="bg-paper-raised rounded-card border border-line p-4 shadow-card hover:border-line-strong transition-all">
                 <p className="text-xs font-semibold text-ink-muted mb-1">Avg Calories</p>
                 <p className="text-[28px] font-bold tracking-tight tabular-nums leading-tight text-ink">{shownAvgCalories}</p>
                 <p className="text-xs text-ink-muted mt-0.5">per day</p>
               </div>
+              )}
 
               {/* Average Daily Protein */}
+              {visibility.protein && (
               <div className="bg-paper-raised rounded-card border border-line p-4 shadow-card hover:border-line-strong transition-all">
                 <p className="text-xs font-semibold text-ink-muted mb-1">Avg Protein</p>
                 <p className="text-[28px] font-bold tracking-tight tabular-nums leading-tight text-ink">{shownAvgProtein}g</p>
                 <p className="text-xs text-ink-muted mt-0.5">per day</p>
               </div>
+              )}
 
+              {/* Deficit and surplus are calorie numbers: they follow the Calories switch */}
+              {visibility.calories && (
+              <>
               {/* Average Daily Deficit/Surplus */}
               <div className={`${deficitBgColor} rounded-card border border-line p-4 shadow-card hover:border-line-strong transition-all`}>
                 <p className="text-xs font-semibold text-ink-muted mb-2">Daily Status</p>
@@ -313,10 +331,19 @@ export default function DashboardScreen() {
                   <span className="font-bold text-base tabular-nums">{shownWeeklyValue}</span> cal
                 </p>
               </div>
+              </>
+              )}
             </div>
 
             {/* Chart */}
-            <WeeklyChart dailyData={stats.dailyData} targetCalories={settings.target_calories} targetProtein={settings.target_protein} maintenanceCalories={settings.maintenance_calories} />
+            <WeeklyChart
+              dailyData={stats.dailyData}
+              targetCalories={settings.target_calories}
+              targetProtein={settings.target_protein}
+              maintenanceCalories={settings.maintenance_calories}
+              showCalories={visibility.calories}
+              showProtein={visibility.protein}
+            />
           </>
         )}
       </div>

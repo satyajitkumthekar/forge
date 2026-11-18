@@ -4,16 +4,18 @@
  */
 
 import React from 'react';
-import type { FrequentItem } from '@/types';
+import type { FrequentItem, MacroVisibility } from '@/types';
+import { DEFAULT_MACRO_VISIBILITY } from '@/utils/macros';
 
 interface FrequentItemsProps {
   items: FrequentItem[];
   onItemClick: (item: FrequentItem) => void;
-  /** Coach has hidden calorie & protein numbers */
-  hideMacros?: boolean;
+  /** Which numbers this person sees. Chips stay compact: calories and
+   *  protein only, never carbs and fat. */
+  visibility?: MacroVisibility;
 }
 
-export default function FrequentItems({ items, onItemClick, hideMacros = false }: FrequentItemsProps) {
+export default function FrequentItems({ items, onItemClick, visibility = DEFAULT_MACRO_VISIBILITY }: FrequentItemsProps) {
   if (!items || items.length === 0) return null;
 
   return (
@@ -25,6 +27,13 @@ export default function FrequentItems({ items, onItemClick, hideMacros = false }
         <div className="flex gap-2">
           {items.map((item, index) => {
             const isMeal = item.type === 'meal';
+            const subtitle = [
+              isMeal ? `${item.itemCount} items` : null,
+              visibility.calories ? `${item.calories} cal` : null,
+              visibility.protein ? `${item.protein}g pro` : null,
+            ]
+              .filter(Boolean)
+              .join(' · ');
             return (
               <button
                 key={isMeal ? `meal-${item.mealId}` : `item-${index}`}
@@ -41,15 +50,7 @@ export default function FrequentItems({ items, onItemClick, hideMacros = false }
                   <span className="text-sm font-medium text-ink truncate max-w-[160px]">
                     {item.name}
                   </span>
-                  {hideMacros ? (
-                    isMeal && (
-                      <span className="text-xs text-ink-muted tabular-nums">{item.itemCount} items</span>
-                    )
-                  ) : (
-                    <span className="text-xs text-ink-muted tabular-nums">
-                      {isMeal ? `${item.itemCount} items · ` : ''}{item.calories} cal · {item.protein}g pro
-                    </span>
-                  )}
+                  {subtitle && <span className="text-xs text-ink-muted tabular-nums">{subtitle}</span>}
                 </div>
                 <svg
                   className="w-4 h-4 text-ink-faint group-hover:text-ink-soft flex-shrink-0"
