@@ -14,6 +14,8 @@ import { getFrequentItems } from '@/utils/frequent-items';
 import { groupIntoMeals, resolveTargetMeal, type MealPin } from '@/utils/meal-groups';
 import { useMacroVisibility, refreshMacroVisibility } from '@/utils/use-macro-visibility';
 import { ensureCarbsFat, hasCarbsFat, showsCarbsOrFat, CARBS_FAT_MISSED_MESSAGE } from '@/utils/macros';
+import { withLookup, type AnalysisProgress, type FoodDraft } from '@/utils/plate';
+import type { WorkingState } from '@/components/WorkingBlock';
 import { useMealPhotosEnabled, refreshMealPhotosEnabled } from '@/utils/use-meal-photos-enabled';
 import ChatInput from '@/components/ChatInput';
 import MacroTable from '@/components/MacroTable';
@@ -92,6 +94,9 @@ const testSeedFor = (key: TestScenarioKey, settings: UserSettings): FoodItemInpu
       return null;
   }
 };
+
+/** How long "Adding it up" stays on screen at least, so it can be read */
+const ADDING_STEP_MIN_MS = 450;
 
 /** Replaces the macro rings when the coach has hidden both calories and protein */
 function DayCountSummary({ meals, items, isToday }: { meals: number; items: number; isToday: boolean }) {
@@ -193,6 +198,12 @@ export default function TrackScreen() {
   // 'new' = force a new meal, otherwise a pinned earlier meal's group id.
   // Session-only on purpose: it resets on date change and app reopen.
   const [mealPin, setMealPin] = useState<MealPin>(null);
+  // The analyser's live working for each log still in flight, by its
+  // loading row: what was sent, and each food as it is found
+  const [working, setWorking] = useState<Record<string, WorkingState>>({});
+  // The rows that landed together from the last analysed log, in order, so
+  // they come in one after another instead of all at once
+  const [landed, setLanded] = useState<string[]>([]);
   // Staff choose which of the four numbers this person sees: calories and
   // protein (with their status colours) by default, carbs and fat when on
   const visibility = useMacroVisibility();
@@ -240,7 +251,7 @@ export default function TrackScreen() {
 
   // Tapping "Add to this meal" pins it, confirms in plain words and opens
   // the keyboard right away. Focus runs inside the tap so iOS allows it.
-  const chatInputRef = React.useRef<HTMLInputElement>(null);
+  const chatInputRef = React.useRef<HTMLTextAreaElement>(null);
   const handlePickMeal = (groupId: string) => {
     if (mealPin === groupId) {
       setMealPin(null);
@@ -542,7 +553,7 @@ export default function TrackScreen() {
 
   // Send in the chat box: stamp the meal and time now (what the user saw
   // when they hit Send) and show a loading row until the numbers come back
-  const handleAnalyzeStart = (label: string) => {
+  const handleAnalyzeStart = (label: string, sent?: { typed: string; photo: boolean }) => {
     const { mealGroupId, createdAt } = takeMealTarget();
     const id = `pending_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
     const pending: FoodEntry = {
@@ -557,12 +568,42 @@ export default function TrackScreen() {
     };
     pendingRef.current = [...pendingRef.current, pending];
     setPendingEntries(pendingRef.current);
+    // A log on its way to the analyser shows its working in the list. A
+    // shortcut waiting on carbs and fat has none: it keeps the plain
+    // loading row.
+    if (sent) {
+      setWorking((prev) => ({ ...prev, [id]: { ...sent, foods: [], lookups: [], stage: 'reading' } }));
+    }
     return id;
+  };
+
+  // Progress for a log that is still in flight: the server has read it and
+  // put it to the AI, a web lookup started or finished, or the AI has just
+  // found a food
+  const handleAnalyzeProgress = (pendingId: string, step: AnalysisProgress) => {
+    setWorking((prev) => {
+      const state = prev[pendingId];
+      if (!state) return prev;
+      const foods =
+        step.type === 'food'
+          ? [...state.foods, { name: step.name, portion: step.portion, assumed: step.assumed }]
+          : state.foods;
+      const lookups =
+        step.type === 'lookup'
+          ? withLookup(state.lookups, { id: step.id, kind: step.kind, text: step.text, done: step.done })
+          : state.lookups;
+      return { ...prev, [pendingId]: { ...state, foods, lookups, stage: 'portions' } };
+    });
   };
 
   const removePending = (pendingId: string) => {
     pendingRef.current = pendingRef.current.filter((p) => p.id !== pendingId);
     setPendingEntries(pendingRef.current);
+    setWorking((prev) => {
+      if (!(pendingId in prev)) return prev;
+      const { [pendingId]: _gone, ...rest } = prev;
+      return rest;
+    });
   };
 
   // Writes a day's entries to the cache, and to the screen when it's the day showing
@@ -665,6 +706,66 @@ export default function TrackScreen() {
       console.error('Unexpected error in handleFoodLogged:', err);
       return false;
     }
+  };
+
+  // Food the analyser has worked out, from the chat box: every food is its
+  // own row, all in the meal that was picked at Send, saved in one go so a
+  // plate is logged complete or not at all. The working stays on screen,
+  // showing "Adding it up", until the rows are really saved; then they take
+  // its place. Nothing is kept to save later: if the save fails, this
+  // resolves false and the chat box hands the text back.
+  const handleAnalysedLogged = async (foods: FoodDraft[], pendingId?: string): Promise<boolean> => {
+    // Invalidate any in-flight background load; this mutation owns the final state
+    loadSeqRef.current++;
+
+    const pending = pendingId ? pendingRef.current.find((p) => p.id === pendingId) : undefined;
+    const date = pending?.entry_date ?? currentDate;
+    const { mealGroupId, createdAt } = pending
+      ? { mealGroupId: pending.meal_group_id ?? null, createdAt: pending.created_at }
+      : takeMealTarget();
+    const listFor = () =>
+      date === currentDateRef.current ? entriesRef.current : getCached<FoodEntry[]>(CACHE_KEYS.entries(date)) ?? [];
+
+    if (pendingId) {
+      setWorking((prev) => {
+        const state = prev[pendingId];
+        return state ? { ...prev, [pendingId]: { ...state, stage: 'adding' } } : prev;
+      });
+    }
+    const addingSince = Date.now();
+
+    try {
+      const saved = await db.food.addPlate(date, foods, { mealGroupId, createdAt });
+      // Long enough for the last step to be read. The save itself usually
+      // takes most of it, so this rarely adds anything.
+      const left = ADDING_STEP_MIN_MS - (Date.now() - addingSince);
+      if (left > 0) await new Promise((resolve) => setTimeout(resolve, left));
+
+      // A background load may have started during the save; from here this
+      // mutation owns the final state again
+      loadSeqRef.current++;
+      if (pendingId) removePending(pendingId);
+      const savedIds = new Set(saved.map((entry) => entry.id));
+      commitEntries(date, [...listFor().filter((entry) => !savedIds.has(entry.id)), ...saved]);
+      setLanded(saved.map((entry) => entry.id));
+      setDataVersion((prev) => prev + 1);
+      return true;
+    } catch (err) {
+      console.error('Error adding analysed food:', err);
+      if (pendingId) removePending(pendingId);
+      return false;
+    }
+  };
+
+  // What the chat box hands over once the analyser answers
+  const handleFoodsLogged = async (foods: FoodDraft[], pendingId?: string): Promise<boolean> => {
+    if (foods.length === 0) {
+      if (pendingId) removePending(pendingId);
+      return false;
+    }
+    // The original analyser (one total, no breakdown) logs the way it always has
+    if (!foods.some((food) => food.analysis)) return handleFoodLogged(foods[0], pendingId);
+    return handleAnalysedLogged(foods, pendingId);
   };
 
   // Shortcuts (Quick Add, Duplicate) copy a food's numbers instead of asking
@@ -1266,6 +1367,8 @@ export default function TrackScreen() {
               onDeleteEntry={handleDeleteEntry}
               onDuplicateEntry={handleDuplicateEntry}
               onSaveAsMeal={handleSaveAsMeal}
+              working={working}
+              landed={landed}
             />
           )}
 
@@ -1276,8 +1379,9 @@ export default function TrackScreen() {
 
       {/* Chat Input (in-flow footer above the tab bar) */}
       <ChatInput
-        onFoodLogged={handleFoodLogged}
+        onFoodsLogged={handleFoodsLogged}
         onAnalyzeStart={handleAnalyzeStart}
+        onAnalyzeProgress={handleAnalyzeProgress}
         onAnalyzeFailed={removePending}
         inputRef={chatInputRef}
         mealTarget={!loading && displayEntries.length > 0 ? mealTarget : null}

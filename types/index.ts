@@ -6,6 +6,24 @@ export type MacroKey = 'calories' | 'protein' | 'carbs' | 'fat';
 /** Which of the four numbers staff let a client see (see utils/macros.ts) */
 export type MacroVisibility = Record<MacroKey, boolean>;
 
+/**
+ * How an AI-analysed food's numbers were worked out. Display only: nothing
+ * is calculated from it. Absent on shortcuts and on food logged before the
+ * analyser listed foods one by one (see utils/plate.ts).
+ */
+export interface FoodAnalysis {
+  v: 1;
+  /** "1 katori, about 180 g" */
+  portion?: string;
+  /** What had to be assumed, in plain words */
+  assumed?: string;
+  /** 'client' when the client typed the calories or protein themselves,
+   *  'label' when they came from a label looked up online */
+  from?: 'client' | 'label' | 'estimate';
+  /** What the client typed for the whole log this food came from */
+  typed?: string;
+}
+
 export interface FoodEntry {
   id: string;
   entry_date: string;
@@ -24,6 +42,8 @@ export interface FoodEntry {
   meal_id?: string | null;
   /** The sitting this entry belongs to ("Meal 1, 2, 3"); see utils/meal-groups.ts */
   meal_group_id?: string | null;
+  /** How the numbers were worked out, for foods the AI analysed */
+  analysis?: FoodAnalysis | null;
 }
 
 /** One picture per meal segment, kept 7 days, for the coach to see

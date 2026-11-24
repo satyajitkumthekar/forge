@@ -11,9 +11,12 @@ import { db, type FoodItemInput } from '@/lib/database';
 import { toast } from '@/lib/toast';
 import { useCountUp } from '@/utils/use-count-up';
 import { useMacroVisibility } from '@/utils/use-macro-visibility';
-import { carbsFatLine, cleanGrams, groupCarbsFatLine } from '@/utils/macros';
+import { carbsFatLine, groupCarbsFatLine } from '@/utils/macros';
+import { foodsFromAnalysis } from '@/utils/plate';
+import { compressForAnalysis } from '@/utils/image';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
+import GrowingTextBox from '@/components/ui/GrowingTextBox';
 import Card from '@/components/ui/Card';
 import EmptyState from '@/components/ui/EmptyState';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
@@ -32,7 +35,7 @@ type DraftItem = FoodItemInput & { uid: string };
 const makeUid = () => `draft_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 
 // Convert file to base64 (same helper as ChatInput)
-const fileToBase64 = (file: File): Promise<string> => {
+const fileToBase64 = (file: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -111,7 +114,8 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
       }
 
       try {
-        const base64 = await fileToBase64(file);
+        // Sent smaller than it was taken; the preview stays the original
+        const base64 = await fileToBase64(await compressForAnalysis(file));
         setImage(base64);
         setImagePreview(URL.createObjectURL(file));
         setError('');
@@ -152,22 +156,23 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
       }
 
       // Call API using abstraction (API key is safe on server!)
-      const nutritionData = await api.analyzeFood(description, image || undefined);
+      const analysis = await api.analyzeFood(description, image || undefined);
 
-      // Success - append to the local draft instead of logging
+      // Success - append to the local draft instead of logging: one item
+      // per food the analyser found. Carbs and fat are kept for everyone and
+      // shown only to those switched on; unknown stays null, never zero.
+      const found = foodsFromAnalysis(analysis, description);
       setItems((prev) => [
         ...prev,
-        {
+        ...found.map((food) => ({
           uid: makeUid(),
-          name: nutritionData.name,
-          calories: nutritionData.calories,
-          protein: nutritionData.protein,
-          // Kept for everyone, shown only to those switched on. Unknown
-          // stays null, never zero.
-          carbs: cleanGrams(nutritionData.carbs),
-          fat: cleanGrams(nutritionData.fat),
-          description: description || nutritionData.name,
-        },
+          name: food.name,
+          calories: food.calories,
+          protein: food.protein,
+          carbs: food.carbs,
+          fat: food.fat,
+          description: food.description,
+        })),
       ]);
 
       // Reset form
@@ -387,7 +392,7 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
           )}
 
           {/* Input Bar */}
-          <form onSubmit={handleAnalyze} className="flex items-center gap-2">
+          <form onSubmit={handleAnalyze} className="flex items-end gap-2">
             {/* Image Upload Button */}
             <label className="flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center bg-paper-inset hover:bg-paper-deep active:bg-paper-deep text-ink-soft hover:text-ink rounded-ctrl cursor-pointer transition duration-150">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -403,13 +408,11 @@ export default function MealBuilder({ meal, onSaved, onCancel }: MealBuilderProp
               />
             </label>
 
-            {/* Text Input */}
-            <input
-              type="text"
+            {/* Text Input: wraps and grows up to five lines */}
+            <GrowingTextBox
               value={description}
-              onChange={(e) => setDescription(e.target.value)}
+              onChange={setDescription}
               placeholder="Add 1 or multiple items (e.g., 2 rotis, dal, rice)"
-              className="flex-1 min-w-0 px-3 py-2.5 border border-line-strong rounded-ctrl focus:outline-none focus:ring-1 focus:ring-ink-muted bg-paper-raised/70 backdrop-blur-sm text-base text-ink placeholder:text-ink-faint transition duration-150"
               disabled={analyzing}
             />
 

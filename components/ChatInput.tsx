@@ -6,15 +6,22 @@
 import React, { useState } from 'react';
 import { api } from '@/lib/api';
 import { db } from '@/lib/database';
-import type { FoodEntry } from '@/types';
 import type { MealTarget } from '@/utils/meal-groups';
-import { cleanGrams } from '@/utils/macros';
+import { foodsFromAnalysis, type AnalysisProgress, type FoodDraft } from '@/utils/plate';
+import { compressForAnalysis } from '@/utils/image';
+import GrowingTextBox from '@/components/ui/GrowingTextBox';
 
 interface ChatInputProps {
-  /** pendingId is the loading row from onAnalyzeStart, which the entry replaces */
-  onFoodLogged: (entry: Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>, pendingId?: string) => void;
-  /** Shows a loading row in the list the moment the user hits Send; returns its id */
-  onAnalyzeStart?: (label: string) => string;
+  /** The foods the analyser found, one per row to log. pendingId is the
+   *  loading row from onAnalyzeStart, which they replace. Resolves false
+   *  when they could not be saved, so the bar can hand the text back. */
+  onFoodsLogged: (foods: FoodDraft[], pendingId?: string) => Promise<boolean | void> | boolean | void;
+  /** Shows the working in the list the moment the user hits Send; returns
+   *  its id. `sent` says what went to the analyser. */
+  onAnalyzeStart?: (label: string, sent?: { typed: string; photo: boolean }) => string;
+  /** Progress from the analyser while it is still working: the log was
+   *  accepted, or a food was just found */
+  onAnalyzeProgress?: (pendingId: string, step: AnalysisProgress) => void;
   /** Analysis failed: drop the loading row */
   onAnalyzeFailed?: (pendingId: string) => void;
   /** Where the next log lands; null hides the line (empty day = Meal 1) */
@@ -22,11 +29,11 @@ interface ChatInputProps {
   onNewMeal?: () => void;
   onClearPin?: () => void;
   /** Lets the log screen focus the field when a meal is picked */
-  inputRef?: React.RefObject<HTMLInputElement | null>;
+  inputRef?: React.Ref<HTMLTextAreaElement>;
 }
 
 // Convert file to base64
-const fileToBase64 = (file: File): Promise<string> => {
+const fileToBase64 = (file: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
@@ -35,7 +42,7 @@ const fileToBase64 = (file: File): Promise<string> => {
   });
 };
 
-export default function ChatInput({ onFoodLogged, onAnalyzeStart, onAnalyzeFailed, mealTarget, onNewMeal, onClearPin, inputRef }: ChatInputProps) {
+export default function ChatInput({ onFoodsLogged, onAnalyzeStart, onAnalyzeProgress, onAnalyzeFailed, mealTarget, onNewMeal, onClearPin, inputRef }: ChatInputProps) {
   const [description, setDescription] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
@@ -55,7 +62,8 @@ export default function ChatInput({ onFoodLogged, onAnalyzeStart, onAnalyzeFaile
       }
 
       try {
-        const base64 = await fileToBase64(file);
+        // Sent smaller than it was taken; the preview stays the original
+        const base64 = await fileToBase64(await compressForAnalysis(file));
         setImage(base64);
         setImagePreview(URL.createObjectURL(file));
         setError('');
@@ -88,7 +96,10 @@ export default function ChatInput({ onFoodLogged, onAnalyzeStart, onAnalyzeFaile
     const sentDescription = description;
     const sentImage = image;
     const sentPreview = imagePreview;
-    const pendingId = onAnalyzeStart?.(sentDescription.trim() || 'Photo');
+    const pendingId = onAnalyzeStart?.(sentDescription.trim() || 'Photo', {
+      typed: sentDescription.trim(),
+      photo: Boolean(sentImage),
+    });
     setDescription('');
     resetImage();
 
@@ -117,25 +128,21 @@ export default function ChatInput({ onFoodLogged, onAnalyzeStart, onAnalyzeFaile
         return;
       }
 
-      // Call API using abstraction (API key is safe on server!)
-      const nutritionData = await api.analyzeFood(sentDescription, sentImage || undefined);
+      // Call API using abstraction (API key is safe on server!). Progress
+      // is passed up as it happens, so the list shows the working instead
+      // of a blank wait.
+      const analysis = await api.analyzeFoodLive(sentDescription, sentImage || undefined, (step) => {
+        if (pendingId) onAnalyzeProgress?.(pendingId, step);
+      });
 
-      // Success - pass data to parent
-      // Note: We don't store image_data anymore (only needed for GPT analysis)
-      onFoodLogged(
-        {
-          name: nutritionData.name,
-          calories: nutritionData.calories,
-          protein: nutritionData.protein,
-          // Saved for everyone, shown only to those switched on. Unknown
-          // stays null, never zero.
-          carbs: cleanGrams(nutritionData.carbs),
-          fat: cleanGrams(nutritionData.fat),
-          description: sentDescription || nutritionData.name,
-          // image_data removed - not stored in database (only sent to GPT for analysis)
-        },
-        pendingId
-      );
+      // Success - pass the foods to the parent: one row per food on the
+      // plate, each with its own numbers (carbs and fat are saved for
+      // everyone and shown only to those switched on; unknown stays null,
+      // never zero). The photo is not stored: it was only for the analysis.
+      const saved = await onFoodsLogged(foodsFromAnalysis(analysis, sentDescription), pendingId);
+      // Not saved: say so and hand the text and photo back, so sending it
+      // again is one tap. Nothing is kept to save later.
+      if (saved === false) fail('Could not save this. Please send it again.');
     } catch (err) {
       console.error('Food analysis error:', err);
       fail(err instanceof Error ? err.message : 'Failed to analyze food. Please try again.');
@@ -214,8 +221,9 @@ export default function ChatInput({ onFoodLogged, onAnalyzeStart, onAnalyzeFaile
           </div>
         )}
 
-        {/* Input Bar */}
-        <form onSubmit={handleSubmit} className="flex items-center gap-2">
+        {/* Input Bar: the buttons stay level with the last line as the
+            text box grows */}
+        <form onSubmit={handleSubmit} className="flex items-end gap-2">
           {/* Image Upload Button */}
           <label className="flex-shrink-0 min-w-[44px] min-h-[44px] flex items-center justify-center bg-paper-inset hover:bg-paper-deep active:bg-paper-deep text-ink-soft hover:text-ink rounded-ctrl cursor-pointer transition duration-150">
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -230,18 +238,16 @@ export default function ChatInput({ onFoodLogged, onAnalyzeStart, onAnalyzeFaile
             />
           </label>
 
-          {/* Text Input */}
-          <input
-            type="text"
+          {/* Text Input: wraps and grows up to five lines */}
+          <GrowingTextBox
             value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            ref={inputRef}
+            onChange={setDescription}
+            inputRef={inputRef}
             placeholder={
               mealTarget?.mode === 'pinned'
                 ? `Add to Meal ${mealTarget.number}…`
                 : 'Add 1 or multiple items (e.g., 2 rotis, dal, rice)'
             }
-            className="flex-1 min-w-0 px-3 py-2.5 border border-line-strong rounded-ctrl focus:outline-none focus:ring-1 focus:ring-ink-muted bg-paper-raised/70 backdrop-blur-sm text-base text-ink placeholder:text-ink-faint transition duration-150"
           />
 
           {/* Send Button */}

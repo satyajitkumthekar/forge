@@ -5,6 +5,9 @@
  * "Add to this meal" pill) pins it as the target for the next log; in
  * selection mode it selects the whole meal. Rows keep duplicate/delete.
  * Optional selection mode lets the user save entries as a reusable meal.
+ * While the AI works on a log, its place in the list shows the working
+ * (WorkingBlock). Once saved, a food the AI analysed opens a short note of
+ * how it was worked out when its name is tapped.
  */
 
 import React, { useRef, useState } from 'react';
@@ -15,11 +18,13 @@ import Button from '@/components/ui/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import NameMealDialog from '@/components/meals/NameMealDialog';
 import MealPhotoViewer from '@/components/MealPhotoViewer';
+import WorkingBlock, { type WorkingState } from '@/components/WorkingBlock';
 import type { FoodItemInput } from '@/lib/database';
 import type { FoodEntry, MacroVisibility, MealPhoto } from '@/types';
 import { formatMealTime, type MealGroup } from '@/utils/meal-groups';
 import { useCountUp } from '@/utils/use-count-up';
 import { carbsFatLine, groupCarbsFatLine, showsCarbsOrFat, DEFAULT_MACRO_VISIBILITY } from '@/utils/macros';
+import { workedOutLine } from '@/utils/plate';
 
 interface MacroTableProps {
   entries: FoodEntry[];
@@ -45,6 +50,12 @@ interface MacroTableProps {
   uploadingPhotoIds?: Set<string>;
   onAddPhoto?: (mealGroupId: string, file: File) => void;
   onRemovePhoto?: (mealGroupId: string) => void;
+  /** The analyser's live working, by loading-row id. A loading row with an
+   *  entry here shows it in place of the plain loading row. */
+  working?: Record<string, WorkingState>;
+  /** Ids of the rows that just landed together, in order: they come in one
+   *  after another */
+  landed?: string[];
 }
 
 interface MealHeaderProps {
@@ -140,6 +151,10 @@ function MealHeader({ meal, isAutoTarget, isPinned, selecting, onClick, visibili
 }
 
 const NO_PENDING = new Set<string>();
+const NO_WORKING: Record<string, WorkingState> = {};
+const NO_LANDED: string[] = [];
+/** Gap between rows that land together */
+const LANDING_STEP_MS = 70;
 const NO_PHOTOS: Record<string, MealPhoto> = {};
 
 export default function MacroTable({
@@ -157,11 +172,23 @@ export default function MacroTable({
   uploadingPhotoIds = NO_PENDING,
   onAddPhoto,
   onRemovePhoto,
+  working: liveWorking = NO_WORKING,
+  landed = NO_LANDED,
 }: MacroTableProps) {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [selecting, setSelecting] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [nameDialogOpen, setNameDialogOpen] = useState(false);
+  // Foods whose note of how they were worked out is open
+  const [openNotes, setOpenNotes] = useState<Set<string>>(new Set());
+  const toggleNote = (entryId: string) =>
+    setOpenNotes((prev) => {
+      const next = new Set(prev);
+      if (next.has(entryId)) next.delete(entryId);
+      else next.add(entryId);
+      return next;
+    });
+
   // Meal photos: one hidden picker shared by every meal, and the open viewer
   const photoInputRef = useRef<HTMLInputElement>(null);
   const photoTargetRef = useRef<string | null>(null);
@@ -284,113 +311,175 @@ export default function MacroTable({
     onSaveAsMeal?.(name, items);
   };
 
-  // Numbers still on the way (a food sent from the chat box, or a shortcut
-  // waiting on its carbs and fat): the text with a spinner, and shimmer
-  // wherever this person's numbers will land
-  const renderPendingRow = (entry: FoodEntry) => (
-    <li
-      key={entry.id}
-      aria-busy="true"
-      className="flex items-center gap-3 pl-4 pr-1 min-h-[52px] animate-entry-in"
-    >
-      <div className="flex-1 min-w-0 py-3">
-        <div className="flex items-center gap-2">
-          <svg className="animate-spin h-3.5 w-3.5 flex-shrink-0 text-ink-faint" viewBox="0 0 24 24" aria-hidden="true">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          <span className="text-sm text-ink-muted leading-snug break-words min-w-0">{entry.name}</span>
-        </div>
-        {/* Indented past the spinner so it sits where the line will */}
-        {showsCarbsOrFat(visibility) && <Skeleton className="mt-1.5 ml-[22px] h-3 w-28" />}
-      </div>
+  // Numbers still on the way. A food sent from the chat box shows the
+  // analyser's working. A shortcut waiting on its carbs and fat shows the
+  // text with a spinner, and shimmer wherever this person's numbers will land.
+  const renderPendingRow = (entry: FoodEntry) => {
+    const live = liveWorking[entry.id];
+    if (live) {
+      return (
+        <li key={entry.id} className="animate-entry-in">
+          <WorkingBlock state={live} />
+        </li>
+      );
+    }
 
-      {(visibility.calories || visibility.protein) && (
-        <div className="flex items-center gap-2 shrink-0" aria-hidden="true">
-          {visibility.calories && <Skeleton className="h-3.5 w-8 ml-2" />}
-          {visibility.protein && <Skeleton className="h-3.5 w-8 ml-2" />}
+    return (
+      <li
+        key={entry.id}
+        aria-busy="true"
+        className="flex items-center gap-3 pl-4 pr-1 min-h-[52px] animate-entry-in"
+      >
+        <div className="flex-1 min-w-0 py-3">
+          <div className="flex items-center gap-2">
+            <svg className="animate-spin h-3.5 w-3.5 flex-shrink-0 text-ink-faint" viewBox="0 0 24 24" aria-hidden="true">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+            </svg>
+            <span className="text-sm text-ink-muted leading-snug break-words min-w-0">{entry.name}</span>
+          </div>
+          {/* Indented past the spinner so it sits where the line will */}
+          {showsCarbsOrFat(visibility) && <Skeleton className="mt-1.5 ml-[22px] h-3 w-28" />}
         </div>
-      )}
 
-      {/* Same width as the duplicate/delete pair so columns stay aligned */}
-      <div className="w-20 shrink-0" aria-hidden="true" />
-    </li>
-  );
+        {(visibility.calories || visibility.protein) && (
+          <div className="flex items-center gap-2 shrink-0" aria-hidden="true">
+            {visibility.calories && <Skeleton className="h-3.5 w-8 ml-2" />}
+            {visibility.protein && <Skeleton className="h-3.5 w-8 ml-2" />}
+          </div>
+        )}
+
+        {/* Same width as the duplicate/delete pair so columns stay aligned */}
+        <div className="w-20 shrink-0" aria-hidden="true" />
+      </li>
+    );
+  };
 
   const renderEntryRow = (entry: FoodEntry) => {
     if (pendingIds.has(entry.id)) return renderPendingRow(entry);
     const isSelected = selectedIds.has(entry.id);
     const carbsFat = carbsFatLine(entry, visibility);
+    // How the AI worked this food out (the portion, and anything else it
+    // assumed). Opened by tapping the food's name; shortcuts and older rows
+    // have none, so their name stays plain text.
+    const note = selecting ? null : workedOutLine(entry.analysis);
+    const noteOpen = note !== null && openNotes.has(entry.id);
+    const landedAt = landed.indexOf(entry.id);
+    // The name split before its last word, which the arrow is kept beside.
+    // A very long last word is left free to wrap rather than overflow.
+    const lastSpace = entry.name.lastIndexOf(' ');
+    const nameHead = lastSpace >= 0 ? entry.name.slice(0, lastSpace + 1) : '';
+    const nameTail = lastSpace >= 0 ? entry.name.slice(lastSpace + 1) : entry.name;
+    const nameGlued = nameTail.length <= 24;
     return (
       <li
         key={entry.id}
         onClick={selecting ? () => toggleSelected(entry.id) : undefined}
-        className={`flex items-center gap-3 pl-4 pr-1 min-h-[52px] animate-entry-in transition-colors duration-150 ${
+        style={landedAt > 0 ? { animationDelay: `${landedAt * LANDING_STEP_MS}ms` } : undefined}
+        className={`animate-entry-in transition-colors duration-150 ${
           selecting ? 'cursor-pointer active:bg-paper-inset/60' : ''
         } ${isSelected ? 'bg-paper-inset/60' : ''}`}
       >
-        <div className="flex-1 min-w-0 py-3">
-          <div className="text-sm text-ink leading-snug break-words">{entry.name}</div>
-          {carbsFat && <div className="mt-0.5 text-xs text-ink-muted tabular-nums">{carbsFat}</div>}
+        <div className="flex items-center gap-3 pl-4 pr-1 min-h-[52px]">
+          {note !== null ? (
+            <button
+              type="button"
+              onClick={() => toggleNote(entry.id)}
+              aria-expanded={noteOpen}
+              aria-label={`${entry.name}. ${noteOpen ? 'Hide' : 'Show'} how this was worked out`}
+              className="flex-1 min-w-0 py-3 text-left rounded-ctrl outline-none focus-visible:ring-1 focus-visible:ring-ink-muted"
+            >
+              {/* The arrow stays with the last word, so a long name never
+                  leaves it on a line of its own */}
+              <span className="text-sm text-ink leading-snug break-words">
+                {nameHead}
+                <span className={nameGlued ? 'whitespace-nowrap' : undefined}>
+                  {nameTail}
+                  <svg
+                    className={`inline-block align-[-2px] ml-1 w-3.5 h-3.5 text-ink-faint transition-transform duration-150 ${
+                      noteOpen ? 'rotate-180' : ''
+                    }`}
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                    aria-hidden="true"
+                  >
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </span>
+              </span>
+              {carbsFat && <span className="block mt-0.5 text-xs text-ink-muted tabular-nums">{carbsFat}</span>}
+            </button>
+          ) : (
+            <div className="flex-1 min-w-0 py-3">
+              <div className="text-sm text-ink leading-snug break-words">{entry.name}</div>
+              {carbsFat && <div className="mt-0.5 text-xs text-ink-muted tabular-nums">{carbsFat}</div>}
+            </div>
+          )}
+
+          {(visibility.calories || visibility.protein) && (
+            <div className="flex items-baseline gap-2 shrink-0 tabular-nums">
+              {visibility.calories && (
+                <span className="w-10 text-right text-sm font-medium text-ink">{entry.calories}</span>
+              )}
+              {visibility.protein && (
+                <span className="w-10 text-right text-sm text-ink-muted">{entry.protein}g</span>
+              )}
+            </div>
+          )}
+
+          {selecting ? (
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleSelected(entry.id);
+              }}
+              className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-ctrl transition duration-150"
+              role="checkbox"
+              aria-checked={isSelected}
+              aria-label={isSelected ? `Deselect ${entry.name}` : `Select ${entry.name}`}
+            >
+              <span
+                className={`w-5 h-5 rounded-full border flex items-center justify-center transition duration-150 ${
+                  isSelected ? 'bg-ink border-ink' : 'bg-paper-raised border-line-strong'
+                }`}
+              >
+                {isSelected && (
+                  <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </span>
+            </button>
+          ) : (
+            <div className="flex items-center shrink-0">
+              <button
+                onClick={() => handleDuplicate(entry.id)}
+                className="w-10 min-h-[44px] flex items-center justify-center text-ink-faint hover:text-ink active:text-ink active:bg-paper-inset rounded-ctrl transition duration-150"
+                title="Duplicate"
+                aria-label="Duplicate entry"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setConfirmDeleteId(entry.id)}
+                className="w-10 min-h-[44px] flex items-center justify-center text-ink-faint hover:text-danger active:text-danger active:bg-paper-inset rounded-ctrl transition duration-150"
+                title="Delete"
+                aria-label="Delete entry"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          )}
         </div>
 
-        {(visibility.calories || visibility.protein) && (
-          <div className="flex items-baseline gap-2 shrink-0 tabular-nums">
-            {visibility.calories && (
-              <span className="w-10 text-right text-sm font-medium text-ink">{entry.calories}</span>
-            )}
-            {visibility.protein && (
-              <span className="w-10 text-right text-sm text-ink-muted">{entry.protein}g</span>
-            )}
-          </div>
-        )}
-
-        {selecting ? (
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              toggleSelected(entry.id);
-            }}
-            className="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-ctrl transition duration-150"
-            role="checkbox"
-            aria-checked={isSelected}
-            aria-label={isSelected ? `Deselect ${entry.name}` : `Select ${entry.name}`}
-          >
-            <span
-              className={`w-5 h-5 rounded-full border flex items-center justify-center transition duration-150 ${
-                isSelected ? 'bg-ink border-ink' : 'bg-paper-raised border-line-strong'
-              }`}
-            >
-              {isSelected && (
-                <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                </svg>
-              )}
-            </span>
-          </button>
-        ) : (
-          <div className="flex items-center shrink-0">
-            <button
-              onClick={() => handleDuplicate(entry.id)}
-              className="w-10 min-h-[44px] flex items-center justify-center text-ink-faint hover:text-ink active:text-ink active:bg-paper-inset rounded-ctrl transition duration-150"
-              title="Duplicate"
-              aria-label="Duplicate entry"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-              </svg>
-            </button>
-            <button
-              onClick={() => setConfirmDeleteId(entry.id)}
-              className="w-10 min-h-[44px] flex items-center justify-center text-ink-faint hover:text-danger active:text-danger active:bg-paper-inset rounded-ctrl transition duration-150"
-              title="Delete"
-              aria-label="Delete entry"
-            >
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.75} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+        {/* The note runs the full width of the row, under the food it is about */}
+        {noteOpen && (
+          <div className="px-4 pb-3 -mt-1 text-xs text-ink-muted leading-snug break-words animate-fade-in">{note}</div>
         )}
       </li>
     );
@@ -440,7 +529,7 @@ export default function MacroTable({
                   translucent
                   className={`overflow-hidden transition-shadow duration-200 ${isPinned ? 'ring-1 ring-ink/20' : ''}`}
                 >
-                  <ul className="divide-y divide-line/60">{meal.entries.map(renderEntryRow)}</ul>
+                  <ul className="divide-y divide-line/60">{meal.entries.map((entry) => renderEntryRow(entry))}</ul>
                   {renderPhotoRow(meal)}
                 </Card>
               </section>

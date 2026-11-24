@@ -14,7 +14,7 @@ import { getCached, setCached, CACHE_KEYS } from '@/lib/enhanced-cache';
 import { getWeekStart, formatWeekRange, getWeeklyStats } from '@/utils/weekly-stats';
 import { appToday, addDaysYMD } from '@/utils/date';
 import { format, addDays } from 'date-fns';
-import { formatLogTime24, getTierColor } from '@/components/admin/helpers';
+import { formatLogTime24 } from '@/components/admin/helpers';
 import Button from '@/components/ui/Button';
 import Input from '@/components/ui/Input';
 import { Skeleton, SkeletonRow, SkeletonStat } from '@/components/ui/Skeleton';
@@ -22,6 +22,7 @@ import StatTile from '@/components/admin/StatTile';
 import SectionDisclosure from '@/components/admin/SectionDisclosure';
 import PendingAccess from '@/components/admin/PendingAccess';
 import AccessPasses from '@/components/admin/AccessPasses';
+import WebSearchSwitch from '@/components/admin/WebSearchSwitch';
 import ConfirmDialog from '@/components/ui/ConfirmDialog';
 import WeekSelector from '@/components/admin/WeekSelector';
 import UserActivityTable from '@/components/admin/UserActivityTable';
@@ -61,7 +62,6 @@ export default function AnalyticsScreen() {
   const USERS_PER_PAGE = 15;
   // 'admin' sees everything; 'coach' sees only their assigned clients
   const [role, setRole] = useState<'admin' | 'coach' | null>(null);
-  const [adminControlsOpen, setAdminControlsOpen] = useState(false);
   const [weekStart, setWeekStart] = useState<Date>(() => getWeekStart(getTodayDate()));
 
   // Access list: grant/boot toggle busy state + pending delete confirmation
@@ -953,77 +953,11 @@ export default function AnalyticsScreen() {
           </div>
         )}
 
-        {/* SECTION 0: Admin Controls (Collapsible) */}
+        {/* The one switch for the food analyser's web search, for everyone */}
         {role === 'admin' && (
-        <div className="mt-4">
-          <SectionDisclosure
-            title="Admin Controls"
-            subtitle="Tier limits"
-            open={adminControlsOpen}
-            onToggle={() => setAdminControlsOpen(!adminControlsOpen)}
-            accentDot
-          >
-            <div className="bg-paper-raised rounded-card border border-line p-6 shadow-card">
-              <div className="space-y-6">
-                {/* Tier API Limits */}
-                <div>
-                  <h3 className="text-[11px] font-semibold uppercase tracking-wider text-ink-muted mb-3">
-                    Tier API Call Limits (Daily)
-                  </h3>
-                  <div className="space-y-3">
-                    {/* These mirror update_daily_limit_on_tier_change in the database,
-                        which is what actually sets each person's limits. Pro is the
-                        plan everyone starts on; Basic remains for staff to pick by hand. */}
-                    {/* Basic Tier */}
-                    <div className="flex items-center justify-between p-3 bg-paper-inset border border-line rounded-ctrl">
-                      <span className={`px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide rounded-full border ${getTierColor('basic')}`}>
-                        Basic
-                      </span>
-                      <div className="flex gap-4 text-xs">
-                        <span className="text-ink-muted">
-                          Food: <span className="font-semibold text-ink">50</span>
-                        </span>
-                        <span className="text-ink-muted">
-                          Coach: <span className="font-semibold text-ink">10</span>
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Pro Tier */}
-                    <div className="flex items-center justify-between p-3 bg-paper-inset border border-line rounded-ctrl">
-                      <span className={`px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide rounded-full border ${getTierColor('pro')}`}>
-                        Pro
-                      </span>
-                      <div className="flex gap-4 text-xs">
-                        <span className="text-ink-muted">
-                          Food: <span className="font-semibold text-ink">500</span>
-                        </span>
-                        <span className="text-ink-muted">
-                          Coach: <span className="font-semibold text-ink">25</span>
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Admin Tier */}
-                    <div className="flex items-center justify-between p-3 bg-paper-inset border border-line rounded-ctrl">
-                      <span className={`px-2.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide rounded-full border ${getTierColor('admin')}`}>
-                        Admin
-                      </span>
-                      <div className="flex gap-4 text-xs">
-                        <span className="text-ink-muted">
-                          Food: <span className="font-semibold text-ink">Unlimited</span>
-                        </span>
-                        <span className="text-ink-muted">
-                          Coach: <span className="font-semibold text-ink">100</span>
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </SectionDisclosure>
-        </div>
+          <div className="mt-4">
+            <WebSearchSwitch />
+          </div>
         )}
 
         {/* SECTION 1: User Control (Collapsible, admin only) */}

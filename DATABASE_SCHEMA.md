@@ -115,6 +115,7 @@ erDiagram
     system_settings {
         integer id PK "=1"
         integer max_allowed_users
+        boolean food_web_search
     }
 ```
 
@@ -136,6 +137,9 @@ Daily food logs with nutrition data
 | description | TEXT | NULL | Additional notes |
 | created_at | TIMESTAMPTZ | NOW() | When logged (for DAU) |
 | updated_at | TIMESTAMPTZ | NOW() | Auto-updated on edit |
+| analysis | JSONB | NULL | How an AI-analysed food was worked out: `{ v, portion, assumed, from, typed }`, where `from` is `client` (numbers the client typed), `label` (a label the analyser looked up online) or `estimate`. Display only. NULL for shortcuts and for rows logged before it existed. Added by `20261124_food_entry_analysis.sql` |
+
+**Analysed plates:** the food analyser (`analyze-food-v2`) lists each food on a plate separately and the app logs each as its own row, all in one meal segment (`meal_group_id`) and a millisecond apart in `created_at` so they keep the order of the plate. `analysis` holds the note shown under "How this was worked out".
 
 **Indexes:**
 - `(entry_date DESC)` - Fast date queries
@@ -269,9 +273,10 @@ Global app configuration (single row)
 |--------|------|------------|-------|
 | id | INTEGER | =1 (CHECK) | Always 1 |
 | max_allowed_users | INTEGER | DEFAULT 100 | Waitlist cutoff |
+| food_web_search | BOOLEAN | NOT NULL DEFAULT true | Food analyser web search for everyone. Admins switch it on the Admin page; `analyze-food-v2` reads it on every log. Added by `20261124_food_web_search_switch.sql` |
 | updated_at | TIMESTAMPTZ | NOW() | - |
 
-**Purpose:** Controls waitlist access. Users with `user_number <= max_allowed_users` have access.
+**Purpose:** Controls waitlist access. Users with `user_number <= max_allowed_users` have access. Also holds the admin's on/off switch for the food analyser's web search. Anyone can read the row; only admins can change it.
 
 ---
 

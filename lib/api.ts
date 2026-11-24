@@ -7,6 +7,19 @@
 import { FunctionsHttpError } from '@supabase/supabase-js';
 import { supabase } from './supabase';
 import type { CoachContext, AnchorCookbookContent } from '../types';
+import { ProgressReader, type AnalysisProgress, type AnalysisResult } from '../utils/plate';
+
+/**
+ * The analyser a typed or photographed food goes to: the one that lists
+ * each food on the plate separately. The original 'analyze-food' stays
+ * deployed beside it and still serves estimateCarbsFat below, so pointing
+ * this back at 'analyze-food' is all it takes to return to one total per
+ * log.
+ */
+const FOOD_ANALYSER = 'analyze-food-v2';
+
+/** Shown when the analyser's answer never arrived in full */
+const ANALYSIS_LOST_MESSAGE = 'Could not work this one out just now. Please send it again.';
 
 const SESSION_EXPIRED_MESSAGE = 'Your session is no longer valid. Please sign in again.';
 const SERVER_REJECTED_MESSAGE = 'The server could not verify your login just now. Please try again in a moment.';
@@ -91,23 +104,75 @@ export const api = {
    * Calls Supabase Edge Function which calls OpenAI
    * @param description - Text description of food
    * @param image - Base64 encoded image (optional)
-   * @returns Nutrition data (name, calories, protein, and carbs and fat in
-   *   grams; null when the AI gave nothing usable for one of those two)
+   * @returns The plate's totals (name, calories, protein, and carbs and fat
+   *   in grams; null when unknown), plus each food on it in `items` with
+   *   the portion that was assumed. Turn it into rows with
+   *   foodsFromAnalysis (utils/plate.ts).
    */
-  analyzeFood: async (
-    description: string,
-    image?: string
-  ): Promise<{
-    name: string;
-    calories: number;
-    protein: number;
-    carbs?: number | null;
-    fat?: number | null;
-  }> => {
-    return invokeFunction('analyze-food', {
+  analyzeFood: async (description: string, image?: string): Promise<AnalysisResult> => {
+    return invokeFunction(FOOD_ANALYSER, {
       description,
       image,
     });
+  },
+
+  /**
+   * The same analysis, with progress, so the wait can show real working:
+   * onProgress hears 'start' once the server has read and accepted the log
+   * and has put it to the AI, each web lookup as it starts and finishes,
+   * then each food the moment the AI has found it.
+   * Those are for display only. The checked, added-up plate is what this
+   * resolves to, exactly as analyzeFood does. One request, no retry: if the
+   * connection drops before the plate arrives, this throws.
+   */
+  analyzeFoodLive: async (
+    description: string,
+    image: string | undefined,
+    onProgress: (step: AnalysisProgress) => void
+  ): Promise<AnalysisResult> => {
+    const answer = await invokeFunction<Response | AnalysisResult>(FOOD_ANALYSER, {
+      description,
+      image,
+      stream: true,
+    });
+
+    // An analyser that answers in one piece (the original one) has no
+    // progress to report
+    if (!(answer instanceof Response)) return answer;
+    if (!answer.body) throw new Error(ANALYSIS_LOST_MESSAGE);
+
+    const progress = new ProgressReader();
+    const decoder = new TextDecoder();
+    const reader = answer.body.getReader();
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        for (const event of progress.push(decoder.decode(value, { stream: true }))) {
+          if (event.type === 'start') {
+            onProgress({ type: 'start' });
+          } else if (event.type === 'food') {
+            onProgress({ type: 'food', name: event.name, portion: event.portion, assumed: event.assumed });
+          } else if (event.type === 'lookup' && typeof event.id === 'string') {
+            onProgress({
+              type: 'lookup',
+              id: event.id,
+              kind: event.kind === 'page' ? 'page' : 'search',
+              text: typeof event.text === 'string' ? event.text : '',
+              done: event.done === true,
+            });
+          } else if (event.type === 'done') {
+            return event.result;
+          } else if (event.type === 'error') {
+            throw new Error(event.message || ANALYSIS_LOST_MESSAGE);
+          }
+        }
+      }
+    } finally {
+      reader.cancel().catch(() => {});
+    }
+    // The connection closed before the plate arrived
+    throw new Error(ANALYSIS_LOST_MESSAGE);
   },
 
   /**

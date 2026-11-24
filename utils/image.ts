@@ -34,3 +34,18 @@ export async function compressImage(file: File, maxSide = 1080, quality = 0.75):
     URL.revokeObjectURL(url);
   }
 }
+
+/**
+ * A photo on its way to the food analyser. A full-size phone photo is slow
+ * to send and the AI reads nothing extra from it, so it goes at 1536 px on
+ * its longest side. If this browser cannot re-encode the photo, the
+ * original is sent as it always was: a photo never blocks a log.
+ */
+export async function compressForAnalysis(file: File): Promise<Blob> {
+  try {
+    return await compressImage(file, 1536, 0.8);
+  } catch (err) {
+    console.error('Could not shrink the photo, sending the original:', err);
+    return file;
+  }
+}

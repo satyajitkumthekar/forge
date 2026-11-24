@@ -184,6 +184,46 @@ export const db = {
     },
 
     /**
+     * Insert the foods of one analysed plate as separate rows in one meal
+     * segment. One statement, so they all save or none do. Rows are stamped
+     * a millisecond apart, which keeps them in the order of the plate.
+     * Each row's note of how it was worked out goes along when it has one.
+     */
+    addPlate: async (
+      date: string,
+      foods: Array<Omit<FoodEntry, 'id' | 'entry_date' | 'created_at' | 'user_id'>>,
+      group: { mealGroupId: string | null; createdAt: string }
+    ): Promise<FoodEntry[]> => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const startedAt = new Date(group.createdAt).getTime();
+      const rows = foods.map((food, index) => ({
+        entry_date: date,
+        user_id: user.id,
+        name: food.name,
+        calories: food.calories,
+        protein: food.protein,
+        carbs: food.carbs ?? null,
+        fat: food.fat ?? null,
+        description: food.description ?? null,
+        analysis: food.analysis ?? null,
+        ...(group.mealGroupId ? { meal_group_id: group.mealGroupId } : {}),
+        created_at: new Date(startedAt + index).toISOString(),
+      }));
+
+      const { data, error } = await supabase
+        .from('food_entries')
+        .insert(rows)
+        .select();
+
+      if (error) throw error;
+      return (data || []).sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+    },
+
+    /**
      * Delete a food entry
      */
     delete: async (id: string): Promise<void> => {
@@ -1229,6 +1269,38 @@ export const db = {
         .eq('id', 1);
 
       if (error) throw error;
+    },
+
+    /**
+     * Whether the food analyser looks brands, packaged foods and chain
+     * dishes up online, for everyone (system_settings.food_web_search)
+     */
+    getFoodWebSearch: async (): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .select('food_web_search')
+        .eq('id', 1)
+        .single();
+
+      if (error) throw error;
+      return data?.food_web_search !== false;
+    },
+
+    /**
+     * Turns the food analyser's web search on or off for everyone, and
+     * returns what is now saved. Only admins can: for anyone else the
+     * database's update rule changes no row, which is reported as an error.
+     */
+    setFoodWebSearch: async (enabled: boolean): Promise<boolean> => {
+      const { data, error } = await supabase
+        .from('system_settings')
+        .update({ food_web_search: enabled, updated_at: new Date().toISOString() })
+        .eq('id', 1)
+        .select('food_web_search');
+
+      if (error) throw error;
+      if (!data || data.length === 0) throw new Error('Only admins can change this setting.');
+      return data[0].food_web_search !== false;
     },
 
     /**
