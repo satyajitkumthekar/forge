@@ -74,6 +74,44 @@ export const LOOKUP_PROMPT = `LOOKING UP LABELS (you can search the web)
 - Never put links, web addresses or citations in any field. Say where the numbers came from in plain words, as above.`;
 
 /**
+ * The quick first question, put to a small cheap model before the main
+ * one: does this log need a label looked up? Attaching the search tool to
+ * the main question costs about a cent on every log, even when nothing is
+ * looked up, so only logs that need it get the tool.
+ */
+export const BRAND_CHECK_PROMPT = `You decide whether a food log needs a nutrition label looked up online.
+
+Answer lookup true only when the log names a specific brand, a packaged product, or a dish from a chain that publishes its nutrition (for example Epigamia, Amul, Yoga Bar, The Whole Truth, Haldiram's, Starbucks, McDonald's, Domino's, Subway), and the client did not type that food's calories or protein.
+
+Answer lookup false for home cooking, for plain foods with no brand (dal, roti, rice, eggs, fruit, milk, whey), for a dish from a local restaurant, and for any food whose calories or protein the client typed.`;
+
+export const BRAND_CHECK_SCHEMA = {
+  type: 'object',
+  properties: { lookup: { type: 'boolean' } },
+  required: ['lookup'],
+  additionalProperties: false,
+} as const;
+
+/** The check's answer, or null when it cannot be read */
+export function readBrandCheck(answer: unknown): boolean | null {
+  if (!answer || typeof answer !== 'object') return null;
+  const lookup = (answer as Record<string, unknown>).lookup;
+  return typeof lookup === 'boolean' ? lookup : null;
+}
+
+/**
+ * Whether this log gets the web search tool: never while the admin switch
+ * is off; always with a photo (a brand can show on the pack, and the check
+ * only reads the note); otherwise as the brand check says, and on when the
+ * check could not answer.
+ */
+export function searchThisLog(options: { switchOn: boolean; hasPhoto: boolean; brand: boolean | null }): boolean {
+  if (!options.switchOn) return false;
+  if (options.hasPhoto) return true;
+  return options.brand !== false;
+}
+
+/**
  * The admin's switch for web search, as read from system_settings: off only
  * when it says false. A missing or unreadable setting leaves search on.
  */

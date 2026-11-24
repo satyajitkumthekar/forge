@@ -16,7 +16,10 @@ import { ProgressReader, type AnalysisProgress, type AnalysisResult } from '../u
  * this back at 'analyze-food' is all it takes to return to one total per
  * log.
  */
-const FOOD_ANALYSER = 'analyze-food-v2';
+// A test copy of the app can point at a test copy of the analyser with
+// EXPO_PUBLIC_FOOD_ANALYSER, so a change can be tried on localhost before
+// clients get it. Unset everywhere else.
+const FOOD_ANALYSER = process.env.EXPO_PUBLIC_FOOD_ANALYSER || 'analyze-food-v2';
 
 /** Shown when the analyser's answer never arrived in full */
 const ANALYSIS_LOST_MESSAGE = 'Could not work this one out just now. Please send it again.';

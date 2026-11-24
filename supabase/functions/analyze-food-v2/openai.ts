@@ -4,7 +4,18 @@
  * functions, tested without a network in tests/analyser.test.mjs.
  */
 
-import { MAX_OUTPUT_TOKENS, PLATE_SCHEMA, noteText, platePrompt, type Ask, type Asked } from './plate.ts';
+import {
+  BRAND_CHECK_PROMPT,
+  BRAND_CHECK_SCHEMA,
+  MAX_OUTPUT_TOKENS,
+  PLATE_SCHEMA,
+  noteText,
+  platePrompt,
+  readBrandCheck,
+  searchThisLog,
+  type Ask,
+  type Asked,
+} from './plate.ts';
 import { EventReader, FoodScanner, readLookup, siteOf, type LiveFood, type LiveLookup } from './stream.ts';
 
 /** Web searches and page reads one log may use; any more are ignored */
@@ -37,6 +48,78 @@ export function buildOpenAIRequest(ask: Ask): Record<string, unknown> {
         }
       : {}),
   };
+}
+
+/** How hard the small model thinks about the brand check: not at all, so
+ *  the answer is back quickly. gpt-6-luna accepts none, low, medium, high,
+ *  xhigh and max (it rejects minimal). */
+export const CHECK_EFFORT = 'none';
+
+/** The brand check's request: the note only, one yes or no back, no tools */
+export function buildBrandCheckRequest(description: string | null | undefined, model: string): Record<string, unknown> {
+  return {
+    model,
+    instructions: BRAND_CHECK_PROMPT,
+    input: [{ role: 'user', content: [{ type: 'input_text', text: noteText(description) }] }],
+    reasoning: { effort: CHECK_EFFORT },
+    text: { format: { type: 'json_schema', name: 'brand_check', strict: true, schema: BRAND_CHECK_SCHEMA } },
+    // Thinking counts toward this; the answer itself is a few words
+    max_output_tokens: 2000,
+    store: false,
+  };
+}
+
+/** The brand check's answer, null when it gave none, and how long it took */
+export interface BrandCheck {
+  lookup: boolean | null;
+  ms: number;
+}
+
+/**
+ * Asks the brand check (see BRAND_CHECK_PROMPT). One request, no retry,
+ * cut off at timeoutMs. lookup is null when it fails, and then the log
+ * keeps the search tool, so a failed check costs money, never accuracy.
+ */
+export async function checkForBrand(
+  description: string | null | undefined,
+  apiKey: string | undefined,
+  model: string,
+  timeoutMs: number
+): Promise<BrandCheck> {
+  const startedAt = Date.now();
+  if (!apiKey) return { lookup: null, ms: 0 };
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await fetch('https://api.openai.com/v1/responses', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(buildBrandCheckRequest(description, model)),
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      console.error('Brand check error:', response.status, await response.text());
+      return { lookup: null, ms: Date.now() - startedAt };
+    }
+    const written = readOpenAIReply(await response.json());
+    if (!written.ok) return { lookup: null, ms: Date.now() - startedAt };
+    let answer: unknown = null;
+    try {
+      answer = JSON.parse(written.text);
+    } catch {
+      // Not JSON: treated as no answer
+    }
+    return { lookup: readBrandCheck(answer), ms: Date.now() - startedAt };
+  } catch (err) {
+    console.error('Brand check failed:', err);
+    return { lookup: null, ms: Date.now() - startedAt };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Pulls the written answer out of a Responses API reply */
@@ -131,18 +214,22 @@ const usageOf = (reply: any) => {
  * One request, no retry. A request that hangs is cut off at timeoutMs.
  * With onLive, the reply is streamed and each food and lookup is reported
  * as it happens; the finished, complete reply is what comes back either
- * way.
+ * way. When drop fires, the request is stopped and its answer is not
+ * wanted (see askWithBrandCheck).
  */
 export async function askOpenAI(
   ask: Ask,
   apiKey: string | undefined,
   timeoutMs: number,
-  onLive?: (event: LiveEvent) => void
+  onLive?: (event: LiveEvent) => void,
+  drop?: AbortSignal
 ): Promise<Asked> {
   if (!apiKey) return { ok: false, why: 'openai key not set' };
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const stop = () => controller.abort();
+  drop?.addEventListener('abort', stop);
   try {
     const response = await fetch('https://api.openai.com/v1/responses', {
       method: 'POST',
@@ -184,10 +271,52 @@ export async function askOpenAI(
     if (!written.ok) return written;
     return { ok: true, text: written.text, usage: usageOf(data), lookups: lookupsOf(data) };
   } catch (err) {
+    // Stopped on purpose: nothing went wrong
+    if (drop?.aborted) return { ok: false, why: 'dropped' };
     const timedOut = err instanceof Error && err.name === 'AbortError';
     console.error('OpenAI request failed:', err);
     return { ok: false, why: timedOut ? 'timeout' : 'network' };
   } finally {
     clearTimeout(timer);
+    drop?.removeEventListener('abort', stop);
   }
+}
+
+/**
+ * The answer for a typed log whose web search the brand check decides
+ * (the admin switch is on and there is no photo).
+ *
+ * The estimate without search starts at once, beside the check, so a log
+ * with no brand waits for nothing extra: its progress is held back until
+ * the check has answered, then shown. When the check finds a brand, or
+ * cannot answer, that estimate is stopped and its progress never shown,
+ * and the log is asked again with search. Neither is a retry: each log
+ * gets exactly one answer, and a failed one fails in front of the client.
+ */
+export async function askWithBrandCheck(
+  ask: Ask,
+  apiKey: string | undefined,
+  checkModel: string,
+  timeouts: { check: number; answer: number },
+  onLive?: (event: LiveEvent) => void
+): Promise<{ asked: Asked; check: BrandCheck; search: boolean }> {
+  let held: LiveEvent[] | null = [];
+  const holdOrShow = (event: LiveEvent) => {
+    if (held) held.push(event);
+    else onLive?.(event);
+  };
+  const drop = new AbortController();
+  const withoutSearch = askOpenAI({ ...ask, search: false }, apiKey, timeouts.answer, onLive && holdOrShow, drop.signal);
+
+  const check = await checkForBrand(ask.description, apiKey, checkModel, timeouts.check);
+  const search = searchThisLog({ switchOn: true, hasPhoto: Boolean(ask.image), brand: check.lookup });
+
+  if (!search) {
+    const waiting = held ?? [];
+    held = null;
+    for (const event of waiting) onLive?.(event);
+    return { asked: await withoutSearch, check, search };
+  }
+  drop.abort();
+  return { asked: await askOpenAI({ ...ask, search: true }, apiKey, timeouts.answer, onLive), check, search };
 }

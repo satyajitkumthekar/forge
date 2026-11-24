@@ -25,7 +25,12 @@
  * - Brands, packaged foods and chain dishes are looked up on the web, and
  *   their label's numbers are used. Each lookup is shown as it happens.
  *   One switch on the Admin page turns this off for everyone
- *   (system_settings.food_web_search), read fresh on every log.
+ *   (system_settings.food_web_search), read fresh on every log. A quick
+ *   check by a small, cheap model gives the search tool only to logs that
+ *   name a brand, a packaged food or a chain dish, because attaching it
+ *   costs about a cent on every log even when nothing is looked up. The
+ *   estimate without search starts at the same time as the check, so a
+ *   log with no brand does not wait for it.
  *
  * SECURITY: same sign-in check and same daily limit as the original.
  * A failed log fails in front of the client. Nothing is retried here.
@@ -33,8 +38,8 @@
 
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { isUsablePhoto, readPlate, webSearchSwitchOn, INVALID_MESSAGE, type Ask } from './plate.ts';
-import { askOpenAI, type LiveEvent } from './openai.ts';
+import { isUsablePhoto, readPlate, searchThisLog, webSearchSwitchOn, INVALID_MESSAGE, type Ask, type Asked } from './plate.ts';
+import { askOpenAI, askWithBrandCheck, type BrandCheck, type LiveEvent } from './openai.ts';
 import { toEvent } from './stream.ts';
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY');
@@ -81,6 +86,13 @@ const readWebSearchSwitch = async (admin: any): Promise<boolean> => {
   }
 };
 
+// The quick brand check that decides whether a log gets the search tool
+// (see askWithBrandCheck in openai.ts): a small, cheap model, changeable
+// through the function's FOOD_CHECK_MODEL setting. If it takes longer than
+// the time limit, the log simply keeps the search tool.
+const CHECK_MODEL = Deno.env.get('FOOD_CHECK_MODEL') || 'gpt-6-luna';
+const CHECK_TIMEOUT_MS = 5_000;
+
 // A request that hangs fails in front of the client instead of spinning
 const AI_TIMEOUT_MS = 90_000;
 
@@ -114,6 +126,8 @@ serve(async (req) => {
 
   let userId: string | null = null;
   let supabaseAdmin: any = null;
+  // The brand check's answer and how long it took; null when it did not run
+  let brandCheck: BrandCheck | null = null;
 
   // Failures are recorded too, so it is possible to see how often a log
   // could not be worked out. Recording never gets in the way of the reply.
@@ -132,11 +146,26 @@ serve(async (req) => {
   };
 
   // Asks the AI, checks every food and adds up (in code, never by the AI).
-  // One request, no retry. With onLive, foods and lookups are reported as
-  // they happen.
-  const analyse = async (ask: Ask, onLive?: (event: LiveEvent) => void): Promise<Outcome> => {
+  // One answer, no retry. With checkBrand, the brand check decides about
+  // web search. With onLive, foods and lookups are reported as they happen.
+  const analyse = async (ask: Ask, checkBrand: boolean, onLive?: (event: LiveEvent) => void): Promise<Outcome> => {
     const startedAt = Date.now();
-    const asked = await askOpenAI(ask, OPENAI_API_KEY, AI_TIMEOUT_MS, onLive);
+    let search = Boolean(ask.search);
+    let asked: Asked;
+    if (checkBrand) {
+      const decided = await askWithBrandCheck(
+        ask,
+        OPENAI_API_KEY,
+        CHECK_MODEL,
+        { check: CHECK_TIMEOUT_MS, answer: AI_TIMEOUT_MS },
+        onLive
+      );
+      brandCheck = decided.check;
+      search = decided.search;
+      asked = decided.asked;
+    } else {
+      asked = await askOpenAI(ask, OPENAI_API_KEY, AI_TIMEOUT_MS, onLive);
+    }
 
     if (!asked.ok) {
       console.error('No usable answer from', ask.model, ':', asked.why);
@@ -162,6 +191,9 @@ serve(async (req) => {
         ms: Date.now() - startedAt,
         input_tokens: asked.usage.input_tokens,
         output_tokens: asked.usage.output_tokens,
+        search,
+        check: brandCheck ? brandCheck.lookup : 'skipped',
+        check_ms: brandCheck ? brandCheck.ms : null,
         lookups: asked.lookups.count,
       })
     );
@@ -189,7 +221,8 @@ serve(async (req) => {
           effort: ask.effort,
           ms: Date.now() - startedAt,
           ...asked.usage,
-          search: Boolean(ask.search),
+          search,
+          check: brandCheck,
           lookups: asked.lookups.count,
           sites: asked.lookups.sites,
         },
@@ -256,7 +289,7 @@ serve(async (req) => {
     // ============================================
     let model = DEFAULT_MODEL;
     let effort = DEFAULT_EFFORT;
-    let search = await searchSwitch;
+    let forcedSearch: boolean | null = null;
     const test = body.test && typeof body.test === 'object' ? (body.test as Record<string, unknown>) : null;
     if (test) {
       const { data: status } = await supabase.rpc('get_rate_limit_status', { user_uuid: user.id });
@@ -267,8 +300,18 @@ serve(async (req) => {
       if (typeof test.model === 'string' && TEST_MODELS.includes(test.model)) model = test.model;
       if (typeof test.effort === 'string' && TEST_EFFORTS.includes(test.effort)) effort = test.effort;
       // Admins can compare the same log with and without the web lookup
-      if (typeof test.search === 'boolean') search = test.search;
+      if (typeof test.search === 'boolean') forcedSearch = test.search;
     }
+
+    // ============================================
+    // WEB SEARCH: off while the admin switch is off, on for a photo (the
+    // check reads only the note). For a typed log the quick brand check
+    // decides, so only logs that need a label carry the search tool.
+    // ============================================
+    const switchOn = await searchSwitch;
+    const checkBrand = forcedSearch === null && switchOn && !hasImage;
+    // Before any check: what the switch and the photo say
+    const search = forcedSearch ?? searchThisLog({ switchOn, hasPhoto: hasImage, brand: null });
 
     const ask: Ask = { model, effort, description, image: hasImage ? (image as string) : null, search };
 
@@ -277,7 +320,7 @@ serve(async (req) => {
     // ask for progress)
     // ============================================
     if (body.stream !== true) {
-      const outcome = await analyse(ask);
+      const outcome = await analyse(ask, checkBrand);
       return reply(outcome.status, outcome.body);
     }
 
@@ -302,7 +345,7 @@ serve(async (req) => {
           // Once a food turns up whose amount was only a guess, the log is
           // going to be turned back: nothing more is shown as found
           let turningBack = false;
-          const outcome = await analyse(ask, (live) => {
+          const outcome = await analyse(ask, checkBrand, (live) => {
             // Each web lookup as it starts and when it is done
             if (live.type === 'lookup') {
               const { id, kind, text, done } = live.lookup;

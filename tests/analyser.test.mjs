@@ -12,6 +12,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  BRAND_CHECK_PROMPT,
+  BRAND_CHECK_SCHEMA,
   LOOKUP_PROMPT,
   PLATE_PROMPT,
   PLATE_SCHEMA,
@@ -30,12 +32,16 @@ import {
   noteText,
   platePrompt,
   proteinFits,
+  readBrandCheck,
   readPlate,
+  searchThisLog,
   webSearchSwitchOn,
 } from '../supabase/functions/analyze-food-v2/plate.ts';
 import {
   MAX_LOOKUPS,
   ReplyFollower,
+  askWithBrandCheck,
+  buildBrandCheckRequest,
   buildOpenAIRequest,
   lookupsOf,
   readOpenAIReply,
@@ -438,6 +444,183 @@ test('the admin switch turns web search off only when it says false', () => {
   // Not set up yet, unreadable, or anything unexpected: search stays on
   for (const row of [null, undefined, {}, { food_web_search: null }, { food_web_search: 'false' }, 'x']) {
     assert.equal(webSearchSwitchOn(row), true, JSON.stringify(row));
+  }
+});
+
+test('the brand check is a small request: the note, one yes or no back, no tools, nothing kept', () => {
+  const request = buildBrandCheckRequest('  250 g epigamia\n turbo ', 'small-model');
+  assert.equal(request.model, 'small-model');
+  assert.equal(request.instructions, BRAND_CHECK_PROMPT);
+  assert.deepEqual(request.input, [{ role: 'user', content: [{ type: 'input_text', text: "The client's note: 250 g epigamia turbo" }] }]);
+  assert.deepEqual(request.text, { format: { type: 'json_schema', name: 'brand_check', strict: true, schema: BRAND_CHECK_SCHEMA } });
+  assert.equal(request.store, false);
+  assert.equal('tools' in request, false);
+  assert.equal(/[‒-―]/.test(BRAND_CHECK_PROMPT), false);
+});
+
+test('the brand check answer is read as yes, no, or no answer', () => {
+  assert.equal(readBrandCheck({ lookup: true }), true);
+  assert.equal(readBrandCheck({ lookup: false }), false);
+  for (const bad of [null, undefined, 'yes', {}, { lookup: 'true' }, { lookup: 1 }]) {
+    assert.equal(readBrandCheck(bad), null, JSON.stringify(bad));
+  }
+});
+
+test('only logs that need a label get the search tool', () => {
+  // The admin switch off wins over everything
+  assert.equal(searchThisLog({ switchOn: false, hasPhoto: true, brand: true }), false);
+  assert.equal(searchThisLog({ switchOn: false, hasPhoto: false, brand: null }), false);
+  // A photo keeps it: a brand can show on the pack, and the check reads only the note
+  assert.equal(searchThisLog({ switchOn: true, hasPhoto: true, brand: false }), true);
+  // Otherwise the check decides, and a failed check keeps search on
+  assert.equal(searchThisLog({ switchOn: true, hasPhoto: false, brand: true }), true);
+  assert.equal(searchThisLog({ switchOn: true, hasPhoto: false, brand: false }), false);
+  assert.equal(searchThisLog({ switchOn: true, hasPhoto: false, brand: null }), true);
+});
+
+// ---------- the estimate that starts beside the brand check ----------
+
+const pause = (ms, signal) =>
+  new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(Object.assign(new Error('stopped'), { name: 'AbortError' }));
+    });
+  });
+
+const finished = (text) => ({
+  status: 'completed',
+  output: [{ type: 'message', content: [{ type: 'output_text', text }] }],
+  usage: { input_tokens: 100, output_tokens: 10 },
+});
+
+/**
+ * A stand-in for OpenAI, put in place of fetch. It answers the brand check
+ * with `brand` after checkMs (or fails it), and every estimate with one
+ * food: "Quick estimate" without search, "Label estimate" with it, after
+ * answerMs. Streamed estimates send the food first, then the finished reply.
+ * Remembers each request: which kind, and whether it was stopped.
+ */
+function standInOpenAI({ brand = false, checkFails = false, checkMs = 20, answerMs = 5 } = {}) {
+  const requests = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    const request = {
+      kind: body.text.format.name === 'brand_check' ? 'check' : body.tools ? 'search' : 'quick',
+      stopped: false,
+    };
+    init.signal?.addEventListener('abort', () => (request.stopped = true));
+    requests.push(request);
+
+    if (request.kind === 'check') {
+      await pause(checkMs, init.signal);
+      request.answeredAt = Date.now();
+      if (checkFails) return new Response('overloaded', { status: 500 });
+      return Response.json(finished(JSON.stringify({ lookup: brand })));
+    }
+    const text = JSON.stringify(plate([food({ name: request.kind === 'search' ? 'Label estimate' : 'Quick estimate' })]));
+    if (!body.stream) {
+      await pause(answerMs, init.signal);
+      return Response.json(finished(text));
+    }
+    const events = [
+      { type: 'response.output_text.delta', delta: text },
+      { type: 'response.completed', response: finished(text) },
+    ];
+    return new Response(
+      new ReadableStream({
+        async start(controller) {
+          for (const event of events) {
+            controller.enqueue(new TextEncoder().encode(toEvent(event)));
+            await pause(answerMs).catch(() => {});
+          }
+          controller.close();
+        },
+      })
+    );
+  };
+  return { requests, putBack: () => (globalThis.fetch = realFetch) };
+}
+
+const typedLog = { model: 'main-model', effort: 'low', description: '2 rotis and dal', image: null, search: true };
+const limits = { check: 1000, answer: 1000 };
+const foodName = (asked) => JSON.parse(asked.text).items[0].name;
+
+test('a typed log with no brand keeps the estimate that started beside the check', async () => {
+  const openai = standInOpenAI({ brand: false, checkMs: 30, answerMs: 5 });
+  try {
+    const { asked, check, search } = await askWithBrandCheck(typedLog, 'key', 'small-model', limits);
+    assert.equal(search, false);
+    assert.equal(check.lookup, false);
+    assert.equal(asked.ok, true);
+    assert.equal(foodName(asked), 'Quick estimate');
+    // Both went out together, and nothing was asked again
+    assert.deepEqual(openai.requests.map((r) => r.kind).sort(), ['check', 'quick']);
+    assert.equal(openai.requests.some((r) => r.stopped), false);
+  } finally {
+    openai.putBack();
+  }
+});
+
+test('a typed log with a brand stops the quick estimate and is asked again with search', async () => {
+  const openai = standInOpenAI({ brand: true, checkMs: 10, answerMs: 200 });
+  try {
+    const { asked, check, search } = await askWithBrandCheck(typedLog, 'key', 'small-model', limits);
+    assert.equal(search, true);
+    assert.equal(check.lookup, true);
+    assert.equal(foodName(asked), 'Label estimate');
+    const quick = openai.requests.find((r) => r.kind === 'quick');
+    assert.equal(quick.stopped, true);
+    assert.equal(openai.requests.filter((r) => r.kind === 'search').length, 1);
+  } finally {
+    openai.putBack();
+  }
+});
+
+test('a brand check that cannot answer keeps search on', async () => {
+  const openai = standInOpenAI({ checkFails: true });
+  const quiet = console.error;
+  console.error = () => {};
+  try {
+    const { asked, check, search } = await askWithBrandCheck(typedLog, 'key', 'small-model', limits);
+    assert.equal(check.lookup, null);
+    assert.equal(search, true);
+    assert.equal(foodName(asked), 'Label estimate');
+  } finally {
+    console.error = quiet;
+    openai.putBack();
+  }
+});
+
+test('progress from the quick estimate shows only once the check keeps it', async () => {
+  // No brand: the food found before the check answered is shown after it
+  const plain = standInOpenAI({ brand: false, checkMs: 40, answerMs: 1 });
+  const shown = [];
+  try {
+    const { asked } = await askWithBrandCheck(typedLog, 'key', 'small-model', limits, (event) =>
+      shown.push({ event, at: Date.now() })
+    );
+    assert.equal(asked.ok, true);
+    assert.deepEqual(shown.map((s) => s.event.type === 'food' && s.event.food.name), ['Quick estimate']);
+    const checkAnswered = plain.requests.find((r) => r.kind === 'check').answeredAt;
+    assert.ok(shown.every((s) => s.at >= checkAnswered));
+  } finally {
+    plain.putBack();
+  }
+
+  // A brand: the quick estimate's food is never shown, only the label one
+  const branded = standInOpenAI({ brand: true, checkMs: 40, answerMs: 1 });
+  const shownBranded = [];
+  try {
+    await askWithBrandCheck(typedLog, 'key', 'small-model', limits, (event) => shownBranded.push(event));
+    assert.deepEqual(
+      shownBranded.filter((event) => event.type === 'food').map((event) => event.food.name),
+      ['Label estimate']
+    );
+  } finally {
+    branded.putBack();
   }
 });
 
